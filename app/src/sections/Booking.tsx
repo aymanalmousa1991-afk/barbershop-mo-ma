@@ -730,8 +730,25 @@ export function Booking() {
                 </p>
                 <p><strong>Tijd:</strong> {formData.time}</p>
               </div>
+              {formData.email ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  <p className="text-blue-700 text-sm flex items-center gap-2">
+                    <Mail className="h-4 w-4" />
+                    Een bevestiging is verstuurd naar <strong>{formData.email}</strong>
+                  </p>
+                  <p className="text-blue-600 text-xs mt-1">
+                    Je ontvangt ook een herinnering 24 uur van tevoren.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                  <p className="text-amber-700 text-sm">
+                    Geen bevestigingsmail (geen e-mail ingevuld). Noteer je afspraak goed!
+                  </p>
+                </div>
+              )}
               <p className="text-stone-600 text-sm">
-                Je ontvangt zo meteen een bevestigingsemail. We zien je graag in onze barbershop!
+                We zien je graag in onze barbershop!
               </p>
             </DialogDescription>
           </DialogHeader>

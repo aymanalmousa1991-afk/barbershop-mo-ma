@@ -4,10 +4,35 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('./database.cjs');
 const path = require('path');
+const cron = require('node-cron');
+const { sendConfirmationEmail, sendReminderEmail, verifyEmailConfig } = require('./emailConfig.cjs');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'barbershop-mo-ma-secret-key-2024';
+
+// ========== SERVICE & BARBER MAPPING ==========
+
+const servicesMap = {
+  'knippen-stylen': 'Knippen + stylen (wax)',
+  'knippen-baard': 'Knippen + baard stylen/scheren',
+  'senioren': 'Senioren 65+ knippen + stylen',
+  'tondeuse': 'Alles één lengte/kaalscheren',
+  'baard': 'Baard stylen of scheren',
+  'baard-nek': 'Baard + neklijnen bijwerken',
+  'jong-tm11': 'Jongens t/m 11 jaar',
+  'jong-12-13': 'Jongens 12-13 jaar'
+};
+
+const barberDisplayMap = {};
+
+// Laad barber display namen bij opstarten
+db.all('SELECT name, display_name FROM barbers WHERE is_active = 1', (err, rows) => {
+  if (!err && rows) {
+    rows.forEach(r => { barberDisplayMap[r.name] = r.display_name; });
+    console.log('✅ Barber display names loaded:', JSON.stringify(barberDisplayMap));
+  }
+});
 
 // ========== MIDDLEWARE ==========
 
@@ -339,6 +364,20 @@ app.post('/api/appointments', (req, res) => {
                 });
               }
 
+              // Verstuur bevestigingsmail (async, niet-blockend)
+              const serviceName = servicesMap[treatment] || treatment;
+              const barberDisplay = barberDisplayMap[barber_name] || barber_name;
+              sendConfirmationEmail({
+                email: email || '',
+                name,
+                service: serviceName,
+                barber: barberDisplay,
+                date,
+                time,
+                price: '',
+                notes: notes || ''
+              });
+
               res.status(201).json({
                 success: true,
                 message: 'Afspraak succesvol aangemaakt!',
@@ -631,6 +670,102 @@ app.use((req, res) => {
   });
 });
 
+// ========== REMINDER SYSTEM (CRON JOB) ==========
+
+/**
+ * Checkt elk uur of er afspraken zijn die over ~24 uur plaatsvinden
+ * en stuurt een reminder email als die nog niet is verstuurd.
+ * 
+ * Gebruikt een 'reminder_sent' kolom om dubbele reminders te voorkomen.
+ */
+
+// Voeg reminder_sent kolom toe als die nog niet bestaat
+db.run(`ALTER TABLE appointments ADD COLUMN reminder_sent INTEGER DEFAULT 0`, (err) => {
+  if (err && !err.message.includes('duplicate column')) {
+    console.error('⚠️ Kon reminder_sent kolom niet toevoegen:', err.message);
+  }
+});
+
+async function checkAndSendReminders() {
+  try {
+    const today = new Date();
+    // Tomorrow's date
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+    console.log(`🔍 [Reminder] Checking appointments for ${tomorrowStr}...`);
+
+    // Find all active appointments for tomorrow that haven't received a reminder yet
+    db.all(
+      `SELECT id, name, email, treatment, barber_name, date, time 
+       FROM appointments 
+       WHERE date = ? AND status = 'active' AND email != '' AND email IS NOT NULL AND (reminder_sent IS NULL OR reminder_sent = 0)`,
+      [tomorrowStr],
+      async (err, rows) => {
+        if (err) {
+          console.error('❌ [Reminder] Database error:', err.message);
+          return;
+        }
+
+        if (!rows || rows.length === 0) {
+          console.log(`📭 [Reminder] Geen herinneringen te versturen voor ${tomorrowStr}`);
+          return;
+        }
+
+        console.log(`📧 [Reminder] ${rows.length} herinnering(en) te versturen voor ${tomorrowStr}`);
+
+        for (const appointment of rows) {
+          if (!appointment.email) continue;
+
+          const serviceName = servicesMap[appointment.treatment] || appointment.treatment;
+          const barberDisplay = barberDisplayMap[appointment.barber_name] || appointment.barber_name;
+
+          const result = await sendReminderEmail({
+            email: appointment.email,
+            name: appointment.name,
+            service: serviceName,
+            barber: barberDisplay,
+            date: appointment.date,
+            time: appointment.time,
+          });
+
+          if (result.success) {
+            // Markeer als herinnering verstuurd
+            db.run('UPDATE appointments SET reminder_sent = 1 WHERE id = ?', [appointment.id], (updateErr) => {
+              if (updateErr) {
+                console.error(`❌ [Reminder] Kon reminder status niet updaten voor ID ${appointment.id}:`, updateErr.message);
+              } else {
+                console.log(`✅ [Reminder] Reminder gemarkeerd voor ID ${appointment.id}`);
+              }
+            });
+          }
+        }
+      }
+    );
+  } catch (err) {
+    console.error('❌ [Reminder] Fout:', err.message);
+  }
+}
+
+// Plan de cron job: elke 5 minuten checken (voor testen)
+// In productie: elke 30 minuten of elk uur
+// Cron expressie: '*/5 * * * *' = elke 5 minuten
+//                 '0 * * * *'   = elk uur
+//                 '0 */6 * * *' = elke 6 uur
+const REMINDER_CRON_SCHEDULE = process.env.REMINDER_CRON_SCHEDULE || '*/30 * * * *';
+
+// Start reminder cron job
+let reminderJob = null;
+try {
+  reminderJob = cron.schedule(REMINDER_CRON_SCHEDULE, () => {
+    checkAndSendReminders();
+  });
+  console.log(`⏰ Reminder cron job gestart: "${REMINDER_CRON_SCHEDULE}"`);
+} catch (err) {
+  console.error('❌ Kon cron job niet starten:', err.message);
+}
+
 // ========== START SERVER ==========
 
 app.listen(PORT, () => {
@@ -642,8 +777,13 @@ app.listen(PORT, () => {
   console.log(`📅 Afspraken: POST/GET /api/appointments`);
   console.log(`🔐 Admin login: POST /api/auth/login`);
   console.log(`📊 Stats: GET /api/stats`);
+  console.log(`📧 Email bevestigingen: ✅ actief`);
+  console.log(`⏰ Reminders: ✅ actief (elke 30 min)`);
   console.log('━'.repeat(50));
   console.log('');
+
+  // Verifieer email configuratie bij opstart
+  setTimeout(() => verifyEmailConfig(), 1000);
 });
 
 module.exports = app;
