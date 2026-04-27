@@ -1,0 +1,10 @@
+{
+  "name": "barbershop-mo-ma",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "cd app && npm install && npm run build",
+    "start": "cd app && node server/server.cjs",
+    "dev": "cd app && npm run dev"
+  }
+}
