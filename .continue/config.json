@@ -1,0 +1,27 @@
+{
+  "models": [
+    {
+      "title": "DeepSeek V3.2",
+      "provider": "openai",
+      "model": "deepseek-chat",
+      "apiKey": "sk-1ed0d***********************0d94",
+      "apiBase": "https://api.deepseek.com/v1",
+      "useLegacyCompletions": false
+    }
+  ],
+  "tabAutocompleteModel": {
+    "title": "DeepSeek V3.2",
+    "provider": "openai",
+    "model": "deepseek-chat",
+    "apiKey": "sk-1ed0d***********************0d94",
+    "apiBase": "https://api.deepseek.com/v1",
+    "useLegacyCompletions": false
+  },
+  "embeddings": {
+    "provider": "openai",
+    "model": "text-embedding-3-large",
+    "apiKey": "sk-1ed0d***********************0d94",
+    "apiBase": "https://api.deepseek.com/v1"
+  },
+  "allowAnonymousTelemetry": false
+}
