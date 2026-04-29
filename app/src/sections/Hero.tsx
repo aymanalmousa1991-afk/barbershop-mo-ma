@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Calendar, Scissors, Award, Users } from 'lucide-react';
+import { ArrowRight, Calendar, Scissors, Award } from 'lucide-react';
 
 interface HeroProps {
   onNavigate: (page: string) => void;
@@ -69,17 +69,13 @@ export function Hero({ onNavigate }: HeroProps) {
             </div>
             
             {/* Info Cards */}
-            <div className="grid grid-cols-3 gap-4 pt-8">
+            <div className="grid grid-cols-2 gap-4 pt-8">
               <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/10">
                 <Scissors className="h-6 w-6 text-[#d4af37] mb-2" />
                 <div className="text-2xl font-bold">10+</div>
                 <div className="text-sm text-stone-400">Jaar ervaring</div>
               </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/10">
-                <Users className="h-6 w-6 text-[#d4af37] mb-2" />
-                <div className="text-2xl font-bold">5000+</div>
-                <div className="text-sm text-stone-400">Tevreden klanten</div>
-              </div>
+              {/* Tevreden klanten card verwijderd */}
               <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/10">
                 <Award className="h-6 w-6 text-[#d4af37] mb-2" />
                 <div className="text-2xl font-bold">4.9</div>

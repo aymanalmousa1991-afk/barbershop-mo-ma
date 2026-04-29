@@ -63,9 +63,10 @@ export function Navbar({ onNavigate, currentPage }: NavbarProps) {
               onClick={() => onNavigate('home')}
               className="flex items-center gap-1 hover:opacity-90 transition-opacity"
             >
-              <span className="logo-font text-3xl text-[#6b0f1a]">Mo</span>
-              <span className="logo-font-italic text-2xl text-[#d4af37]">&</span>
-              <span className="logo-font text-3xl text-[#6b0f1a]">Ma</span>
+              <span className="logo-font text-2xl sm:text-3xl text-[#6b0f1a]">Barbershop</span>
+              <span className="logo-font text-2xl sm:text-3xl text-[#6b0f1a] ml-1">Mo</span>
+              <span className="logo-font-italic text-xl sm:text-2xl text-[#d4af37]">&</span>
+              <span className="logo-font text-2xl sm:text-3xl text-[#6b0f1a]">Ma</span>
             </button>
 
             {/* Desktop Navigation */}

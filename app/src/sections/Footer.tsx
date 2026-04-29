@@ -27,7 +27,7 @@ export function Footer({ onNavigate }: FooterProps) {
             </p>
             <div className="flex gap-3">
               <a 
-                href="https://www.instagram.com/barbershopmo.ma/" 
+                href="https://www.instagram.com/barbershopmo_ma/" 
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-10 h-10 bg-[#6b0f1a] rounded-full flex items-center justify-center hover:bg-[#8b1523] transition-colors"
