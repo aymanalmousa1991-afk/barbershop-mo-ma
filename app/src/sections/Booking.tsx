@@ -111,7 +111,7 @@ export function Booking() {
     try {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
       const response = await fetch(
-        `${API_URL}/appointments/available-slots?date=${dateStr}&barber_name=${formData.barber_name}&service=${formData.service}`
+        `${API_URL}/appointments/available-slots?date=${dateStr}&barber_name=${formData.barber_name}&treatment=${formData.service}`
       );
       const result = await response.json();
       
@@ -147,7 +147,10 @@ export function Booking() {
       const response = await fetch(`${API_URL}/appointments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          treatment: formData.service, // Backend slaat op als 'treatment'
+        }),
       });
 
       const result = await response.json();
