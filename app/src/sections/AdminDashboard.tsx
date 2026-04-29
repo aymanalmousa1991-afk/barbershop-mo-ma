@@ -1,14 +1,18 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   LogOut, Calendar, Clock, Mail, Phone, FileText,
   Trash2, Loader2, AlertTriangle, CheckCircle, TrendingUp,
   Scissors, Users, User, ChevronLeft, ChevronRight,
-  Settings, ArrowRight, KeyRound
+  Settings, ArrowRight, KeyRound, Plus, Plus
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { format, parseISO, isToday, isFuture } from 'date-fns';
@@ -33,6 +37,10 @@ const serviceNames: Record<string, string> = {
   'jong-tm11': 'Jongens t/m 11',
   'jong-12-13': 'Jongens 12-13',
 };
+
+const serviceOptions = Object.keys(serviceNames).map(k => ({ key: k, name: serviceNames[k] }));
+
+const serviceOptions = Object.keys(serviceNames).map(k => ({ key: k, name: serviceNames[k] }));
 
 const barberColors: Record<string, { bg: string; text: string; border: string; light: string }> = {
   'mo': { bg: 'bg-blue-600', text: 'text-blue-600', border: 'border-blue-600', light: 'bg-blue-50 border-blue-200' },
@@ -78,8 +86,24 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [appointmentToMove, setAppointmentToMove] = useState<Appointment | null>(null);
   const [moveTargetBarber, setMoveTargetBarber] = useState('');
+  const [moveDate, setMoveDate] = useState('');
+  const [moveTime, setMoveTime] = useState('');
   const [isMoving, setIsMoving] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+
+  // Nieuwe afspraak toevoegen
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addBarber, setAddBarber] = useState('');
+  const [addTime, setAddTime] = useState('');
+  const [newAppointment, setNewAppointment] = useState({ name: '', email: '', phone: '', service: 'knippen-stylen', notes: '' });
+  const [isAdding, setIsAdding] = useState(false);
+
+  // Nieuwe afspraak toevoegen
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addBarber, setAddBarber] = useState('');
+  const [addTime, setAddTime] = useState('');
+  const [newAppointment, setNewAppointment] = useState({ name: '', email: '', phone: '', service: 'knippen-stylen', notes: '' });
+  const [isAdding, setIsAdding] = useState(false);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -130,20 +154,96 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     setIsMoving(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/admin/appointments/${appointmentToMove.id}/move`, {
-        method: 'POST',
+      // Use PUT to update with new barber, date and time
+      const response = await fetch(`${API_URL}/appointments/${appointmentToMove.id}`, {
+        method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_barber_name: moveTargetBarber })
+        body: JSON.stringify({
+          name: appointmentToMove.name,
+          email: appointmentToMove.email,
+          phone: appointmentToMove.phone,
+          service: appointmentToMove.service,
+          barber_name: moveTargetBarber,
+          date: moveDate || appointmentToMove.date,
+          time: moveTime || appointmentToMove.time,
+          notes: appointmentToMove.notes,
+        })
       });
-      if (!response.ok) throw new Error('Move failed');
+      if (!response.ok) throw new Error('Verplaatsen mislukt');
       await fetchData();
       setMoveDialogOpen(false);
       setAppointmentToMove(null);
       setMoveTargetBarber('');
+      setMoveDate('');
+      setMoveTime('');
     } catch (err) {
       console.error('Error moving:', err);
     } finally {
       setIsMoving(false);
+    }
+  };
+
+  const handleAddAppointment = async () => {
+    if (!addBarber || !addTime || !newAppointment.name) return;
+    setIsAdding(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/appointments`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newAppointment.name,
+          email: newAppointment.email,
+          phone: newAppointment.phone,
+          treatment: newAppointment.service,
+          barber_name: addBarber,
+          date: selectedDate,
+          time: addTime,
+          notes: newAppointment.notes,
+        })
+      });
+      if (!response.ok) throw new Error('Fout bij toevoegen');
+      await fetchData();
+      setAddDialogOpen(false);
+      setAddBarber('');
+      setAddTime('');
+      setNewAppointment({ name: '', email: '', phone: '', service: 'knippen-stylen', notes: '' });
+    } catch (err) {
+      console.error('Error adding:', err);
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const handleAddAppointment = async () => {
+    if (!addBarber || !addTime || !newAppointment.name) return;
+    setIsAdding(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/appointments`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newAppointment.name,
+          email: newAppointment.email,
+          phone: newAppointment.phone,
+          treatment: newAppointment.service,
+          barber_name: addBarber,
+          date: selectedDate,
+          time: addTime,
+          notes: newAppointment.notes,
+        })
+      });
+      if (!response.ok) throw new Error('Fout bij toevoegen');
+      await fetchData();
+      setAddDialogOpen(false);
+      setAddBarber('');
+      setAddTime('');
+      setNewAppointment({ name: '', email: '', phone: '', service: 'knippen-stylen', notes: '' });
+    } catch (err) {
+      console.error('Error adding:', err);
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -266,7 +366,10 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
             {activeView === 'agenda' ? (
               <>
-                <div className="flex items-center justify-between mb-4 bg-white rounded-lg shadow-lg p-4">
+                <div className="flex items-center justify-between gap-2 mb-4 bg-white rounded-lg shadow-lg p-4 flex-wrap">
+                  <Button variant="outline" size="sm" onClick={() => setAddDialogOpen(true)} className="gap-2 border-[#6b0f1a] text-[#6b0f1a] hover:bg-[#6b0f1a] hover:text-white">
+                    <Plus className="h-4 w-4" />Nieuwe Afspraak
+                  </Button>
                   <Button variant="ghost" onClick={handlePrevDay} className="text-[#6b0f1a] hover:bg-[#6b0f1a]/10">
                     <ChevronLeft className="h-5 w-5 mr-1" />Vorige dag
                   </Button>
@@ -315,7 +418,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                                         <p className="text-xs text-stone-500 truncate">{serviceNames[apt.service] || apt.service}</p>
                                         {apt.notes && <p className="text-xs text-stone-400 truncate">{apt.notes}</p>}
                                         <div className="absolute -top-1 -right-1 flex gap-0.5">
-                                          <button onClick={() => { setAppointmentToMove(apt); setMoveDialogOpen(true); }} 
+                                          <button onClick={() => { setAppointmentToMove(apt); setMoveDate(apt.date); setMoveTime(apt.time); setMoveDialogOpen(true); }} 
                                             className="opacity-0 group-hover:opacity-100 transition-opacity text-blue-500 hover:text-blue-700 bg-white rounded-full p-1 shadow-sm" title="Verplaatsen">
                                             <ArrowRight className="h-3.5 w-3.5" />
                                           </button>
@@ -326,7 +429,10 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                                         </div>
                                       </div>
                                     ) : (
-                                      <div className="text-xs text-stone-100 italic">ÔÇö</div>
+                                      <button onClick={() => { setAddBarber(key); setAddTime(time); setAddDialogOpen(true); }} 
+                                        className="w-full text-left group hover:bg-stone-100 rounded px-1 -mx-1 transition-colors">
+                                        <span className="text-xs text-stone-200 group-hover:text-stone-400 italic">+ Toevoegen</span>
+                                      </button>
                                     )}
                                   </div>
                                 </div>
@@ -356,13 +462,13 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                     </TabsList>
                     <TabsContent value="all">
                       <div className="space-y-4">
-                        {appointments.map(a => <AppointmentListItem key={a.id} appointment={a} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDialogOpen(true); }} />)}
+                        {appointments.map(a => <AppointmentListItem key={a.id} appointment={a} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDate(a.date); setMoveTime(a.time); setMoveDialogOpen(true); }} />)}
                         {appointments.length === 0 && <EmptyState />}
                       </div>
                     </TabsContent>
                     <TabsContent value="today">
                       <div className="space-y-4">
-                        {appointments.filter(a => a.date === new Date().toISOString().split('T')[0]).map(a => <AppointmentListItem key={a.id} appointment={a} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDialogOpen(true); }} />)}
+                        {appointments.filter(a => a.date === new Date().toISOString().split('T')[0]).map(a => <AppointmentListItem key={a.id} appointment={a} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDate(a.date); setMoveTime(a.time); setMoveDialogOpen(true); }} />)}
                         {appointments.filter(a => a.date === new Date().toISOString().split('T')[0]).length === 0 && <EmptyState text="Geen afspraken voor vandaag" />}
                       </div>
                     </TabsContent>
@@ -414,31 +520,77 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       </Dialog>
 
       {/* Move Dialog */}
-      <Dialog open={moveDialogOpen} onOpenChange={setMoveDialogOpen}>
-        <DialogContent>
+      <Dialog open={moveDialogOpen} onOpenChange={(v) => { if (!v) { setMoveTargetBarber(''); setMoveDate(''); setMoveTime(''); } setMoveDialogOpen(v); }}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Afspraak Verplaatsen</DialogTitle>
             <DialogDescription>
-              Verplaats de afspraak van <strong>{appointmentToMove?.name}</strong> ({appointmentToMove?.date} om {appointmentToMove?.time}) naar een andere kapper.
+              Verplaats de afspraak van <strong>{appointmentToMove?.name}</strong> naar een andere kapper, datum of tijd.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Label>Verplaats naar kapper</Label>
-            <select className="w-full mt-1 p-2 border rounded" value={moveTargetBarber} onChange={(e) => setMoveTargetBarber(e.target.value)}>
-              <option value="">Selecteer kapper...</option>
-              <option value="mo">Mo</option>
-              <option value="ma">Ma</option>
-              <option value="third">Derde kapper</option>
-            </select>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>Huidig: <strong>{getBarberDisplayName(appointmentToMove?.barber_name || '')}</strong> — {appointmentToMove?.date} om {appointmentToMove?.time}</Label>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-1">
+                <Label>Kapper</Label>
+                <select className="w-full mt-1 p-2 border rounded text-sm" value={moveTargetBarber} onChange={(e) => setMoveTargetBarber(e.target.value)}>
+                  <option value="">Kies...</option>
+                  <option value="mo">Mo</option>
+                  <option value="ma">Ma</option>
+                  <option value="third">Derde kapper</option>
+                </select>
+              </div>
+              <div>
+                <Label>Datum</Label>
+                <Input type="date" className="mt-1" value={moveDate} onChange={(e) => setMoveDate(e.target.value)} />
+              </div>
+              <div>
+                <Label>Tijd</Label>
+                <select className="w-full mt-1 p-2 border rounded text-sm" value={moveTime} onChange={(e) => setMoveTime(e.target.value)}>
+                  <option value="">Kies...</option>
+                  {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setMoveDialogOpen(false); setMoveTargetBarber(''); }}>Annuleren</Button>
+            <Button variant="outline" onClick={() => { setMoveDialogOpen(false); setMoveTargetBarber(''); setMoveDate(''); setMoveTime(''); }}>Annuleren</Button>
             <Button onClick={handleMove} disabled={!moveTargetBarber || isMoving} className="bg-[#6b0f1a]">
               {isMoving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Bezig...</> : 'Verplaatsen'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Add Appointment Dialog */}
+      <AddAppointmentDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        barber={addBarber}
+        setBarber={setAddBarber}
+        time={addTime}
+        setTime={setAddTime}
+        formData={newAppointment}
+        setFormData={setNewAppointment}
+        onSave={handleAddAppointment}
+        isAdding={isAdding}
+      />
+
+      {/* Add Appointment Dialog */}
+      <AddAppointmentDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        barber={addBarber}
+        setBarber={setAddBarber}
+        time={addTime}
+        setTime={setAddTime}
+        formData={newAppointment}
+        setFormData={setNewAppointment}
+        onSave={handleAddAppointment}
+        isAdding={isAdding}
+      />
 
       {/* Password Change Dialog */}
       {passwordDialogOpen && <PasswordChangeDialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} />}
@@ -452,6 +604,152 @@ function EmptyState({ text = "Geen afspraken gevonden" }: { text?: string }) {
       <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
       <p>{text}</p>
     </div>
+  );
+}
+
+function AddAppointmentDialog({
+  open, onOpenChange, barber, setBarber, time, setTime,
+  formData, setFormData, onSave, isAdding
+}: {
+  open: boolean; onOpenChange: (v: boolean) => void;
+  barber: string; setBarber: (v: string) => void;
+  time: string; setTime: (v: string) => void;
+  formData: { name: string; email: string; phone: string; service: string; notes: string };
+  setFormData: (v: any) => void;
+  onSave: () => void; isAdding: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Plus className="h-5 w-5 text-[#6b0f1a]" />Nieuwe Afspraak Toevoegen</DialogTitle>
+          <DialogDescription>Voeg handmatig een afspraak toe voor de geselecteerde kapper en tijd.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Kapper</Label>
+              <select className="w-full mt-1 p-2 border rounded" value={barber} onChange={(e) => setBarber(e.target.value)}>
+                <option value="">Kies kapper...</option>
+                <option value="mo">Mo</option>
+                <option value="ma">Ma</option>
+                <option value="third">Derde kapper</option>
+              </select>
+            </div>
+            <div>
+              <Label>Tijd</Label>
+              <select className="w-full mt-1 p-2 border rounded" value={time} onChange={(e) => setTime(e.target.value)}>
+                <option value="">Kies tijd...</option>
+                {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <Label>Naam *</Label>
+            <Input value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} placeholder="Naam klant" required />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Email</Label>
+              <Input value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} placeholder="email@voorbeeld.nl" />
+            </div>
+            <div>
+              <Label>Telefoon</Label>
+              <Input value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} placeholder="06 12345678" />
+            </div>
+          </div>
+          <div>
+            <Label>Behandeling</Label>
+            <select className="w-full mt-1 p-2 border rounded" value={formData.service} onChange={(e) => setFormData({...formData, service: e.target.value})}>
+              {serviceOptions.map(s => <option key={s.key} value={s.key}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label>Notities</Label>
+            <Textarea value={formData.notes} onChange={(e) => setFormData({...formData, notes: e.target.value})} placeholder="Eventuele notities..." rows={2} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isAdding}>Annuleren</Button>
+          <Button onClick={onSave} disabled={!barber || !time || !formData.name || isAdding} className="bg-[#6b0f1a]">
+            {isAdding ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Bezig...</> : 'Toevoegen'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AddAppointmentDialog({
+  open, onOpenChange, barber, setBarber, time, setTime,
+  formData, setFormData, onSave, isAdding
+}: {
+  open: boolean; onOpenChange: (v: boolean) => void;
+  barber: string; setBarber: (v: string) => void;
+  time: string; setTime: (v: string) => void;
+  formData: { name: string; email: string; phone: string; service: string; notes: string };
+  setFormData: (v: any) => void;
+  onSave: () => void; isAdding: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Plus className="h-5 w-5 text-[#6b0f1a]" />Nieuwe Afspraak Toevoegen</DialogTitle>
+          <DialogDescription>Voeg handmatig een afspraak toe voor de geselecteerde kapper en tijd.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Kapper</Label>
+              <select className="w-full mt-1 p-2 border rounded" value={barber} onChange={(e) => setBarber(e.target.value)}>
+                <option value="">Kies kapper...</option>
+                <option value="mo">Mo</option>
+                <option value="ma">Ma</option>
+                <option value="third">Derde kapper</option>
+              </select>
+            </div>
+            <div>
+              <Label>Tijd</Label>
+              <select className="w-full mt-1 p-2 border rounded" value={time} onChange={(e) => setTime(e.target.value)}>
+                <option value="">Kies tijd...</option>
+                {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <Label>Naam *</Label>
+            <Input value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} placeholder="Naam klant" required />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Email</Label>
+              <Input value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} placeholder="email@voorbeeld.nl" />
+            </div>
+            <div>
+              <Label>Telefoon</Label>
+              <Input value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} placeholder="06 12345678" />
+            </div>
+          </div>
+          <div>
+            <Label>Behandeling</Label>
+            <select className="w-full mt-1 p-2 border rounded" value={formData.service} onChange={(e) => setFormData({...formData, service: e.target.value})}>
+              {serviceOptions.map(s => <option key={s.key} value={s.key}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label>Notities</Label>
+            <Textarea value={formData.notes} onChange={(e) => setFormData({...formData, notes: e.target.value})} placeholder="Eventuele notities..." rows={2} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isAdding}>Annuleren</Button>
+          <Button onClick={onSave} disabled={!barber || !time || !formData.name || isAdding} className="bg-[#6b0f1a]">
+            {isAdding ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Bezig...</> : 'Toevoegen'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
