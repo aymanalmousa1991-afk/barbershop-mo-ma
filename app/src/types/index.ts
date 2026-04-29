@@ -26,6 +26,20 @@ export interface Service {
   duration: string;
   price: string;
   icon: string;
+  // Admin volledige versie
+  key?: string;
+  is_active?: number;
+}
+
+export interface BarberAbsence {
+  id?: number;
+  barber_name: string;
+  date: string;
+  start_time: string | null;
+  end_time: string | null;
+  reason: string;
+  is_full_day: number;
+  created_at?: string;
 }
 
 export interface LoginCredentials {
