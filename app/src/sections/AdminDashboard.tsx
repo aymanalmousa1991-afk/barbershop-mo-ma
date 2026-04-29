@@ -3,13 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { 
   LogOut, Calendar, Clock, Mail, Phone, FileText,
   Trash2, Loader2, AlertTriangle, CheckCircle, TrendingUp,
   Scissors, Users, User, ChevronLeft, ChevronRight,
-  Plus, Settings, ArrowRight, KeyRound, X, Save
+  Settings, ArrowRight, KeyRound
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { format, parseISO, isToday, isFuture } from 'date-fns';
