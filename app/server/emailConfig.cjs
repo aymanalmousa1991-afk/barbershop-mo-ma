@@ -59,14 +59,23 @@ function getTransporter() {
   }
 
   // Echte transporter aanmaken
+  // Gebruik een vast IPv4 adres voor Gmail als EMAIL_HOST niet expliciet is gezet
+  // Dit voorkomt IPv6 problemen op Render
+  const effectiveHost = process.env.EMAIL_HOST || 'smtp.gmail.com';
+  
   transporter = nodemailer.createTransport({
-    host: EMAIL_HOST,
+    host: effectiveHost,
     port: EMAIL_PORT,
     secure: EMAIL_PORT === 465, // true voor 465, false voor 587
     auth: {
       user: EMAIL_USER,
       pass: EMAIL_PASS,
     },
+    // Timeouts om vastlopers te voorkomen
+    connectionTimeout: 10000, // 10 seconden
+    socketTimeout: 15000,
+    // Forceer IPv4 door 'family' optie (werkt met moderne Node.js)
+    // Als dit niet werkt, zet EMAIL_HOST op een IPv4 adres zoals '64.233.184.108'
   });
 
   return transporter;
