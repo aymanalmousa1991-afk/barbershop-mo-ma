@@ -6,6 +6,7 @@ const db = require('./database.cjs');
 const path = require('path');
 const cron = require('node-cron');
 const { sendConfirmationEmail, sendReminderEmail, verifyEmailConfig } = require('./emailConfig.cjs');
+const createAdminRoutes = require('./adminRoutes.cjs');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -238,7 +239,7 @@ app.get('/api/appointments/public', (req, res) => {
 
 /**
  * GET /api/appointments/available-slots?date=YYYY-MM-DD&barber_name=name&service=service_id
- * Get available time slots for a specific date and barber
+ * Get available time slots for a specific date and barber (houdt rekening met afwezigheid)
  */
 app.get('/api/appointments/available-slots', (req, res) => {
   try {
@@ -272,17 +273,47 @@ app.get('/api/appointments/available-slots', (req, res) => {
         }
 
         const bookedTimes = rows.map(row => row.time);
-        const availableSlots = businessHours.filter(slot => !bookedTimes.includes(slot));
 
-        res.json({
-          success: true,
-          data: {
-            date,
-            barber_name,
-            availableSlots,
-            bookedSlots: bookedTimes
+        // Check afwezigheid voor deze kapper op deze datum
+        db.all(
+          'SELECT * FROM barber_absences WHERE barber_name = ? AND date = ?',
+          [barber_name, date],
+          (err2, absences) => {
+            let blockedTimes = [];
+            if (absences && absences.length > 0) {
+              for (const absence of absences) {
+                if (absence.is_full_day) {
+                  // Volledige dag geblokkeerd
+                  blockedTimes = [...businessHours];
+                  break;
+                }
+                if (absence.start_time && absence.end_time) {
+                  // Blok van start_time tot end_time blokkeren
+                  for (const slot of businessHours) {
+                    if (slot >= absence.start_time && slot < absence.end_time) {
+                      blockedTimes.push(slot);
+                    }
+                  }
+                }
+              }
+            }
+
+            // Verwijder geboekte en geblokkeerde tijden
+            const unavailableSlots = [...new Set([...bookedTimes, ...blockedTimes])];
+            const availableSlots = businessHours.filter(slot => !unavailableSlots.includes(slot));
+
+            res.json({
+              success: true,
+              data: {
+                date,
+                barber_name,
+                availableSlots,
+                bookedSlots: bookedTimes,
+                blockedSlots: blockedTimes
+              }
+            });
           }
-        });
+        );
       }
     );
   } catch (err) {
@@ -296,7 +327,7 @@ app.get('/api/appointments/available-slots', (req, res) => {
 
 /**
  * POST /api/appointments
- * Create new appointment (public)
+ * Create new appointment (public) - met validatie op toekomst & afwezigheid
  */
 app.post('/api/appointments', (req, res) => {
   try {
@@ -321,7 +352,18 @@ app.post('/api/appointments', (req, res) => {
       }
     }
 
-    // Check if slot is already booked for this barber
+    // === VALIDATIE: Tijd moet in de toekomst liggen ===
+    const now = new Date();
+    const appointmentDate = new Date(date + 'T' + time);
+
+    if (appointmentDate <= now) {
+      return res.status(400).json({
+        success: false,
+        error: 'Je kunt alleen afspraken maken in de toekomst. Kies een latere datum of tijd.'
+      });
+    }
+
+    // Check of slot is already booked for this barber
     db.get(
       'SELECT * FROM appointments WHERE date = ? AND time = ? AND barber_name = ? AND status = "active"',
       [date, time, barber_name],
@@ -341,59 +383,85 @@ app.post('/api/appointments', (req, res) => {
           });
         }
 
-        // Get barberId from the barbers table if we can
-        const getBarberId = (callback) => {
-          db.get('SELECT id FROM barbers WHERE name = ?', [barber_name], (err, barber) => {
-            if (err || !barber) return callback(null);
-            callback(barber.id);
-          });
-        };
-
-        getBarberId((bid) => {
-          const treatment = service || req.body.treatment;
-          db.run(
-            `INSERT INTO appointments (barberId, barber_name, name, email, phone, treatment, date, time, notes, status) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-            [bid, barber_name, name, email || '', phone || '', treatment, date, time, notes || ''],
-            function(err) {
-              if (err) {
-                console.error('Database error:', err);
-                return res.status(500).json({ 
-                  success: false,
-                  error: 'Afspraak kon niet worden aangemaakt' 
-                });
-              }
-
-              // Verstuur bevestigingsmail (async, niet-blockend)
-              const serviceName = servicesMap[treatment] || treatment;
-              const barberDisplay = barberDisplayMap[barber_name] || barber_name;
-              sendConfirmationEmail({
-                email: email || '',
-                name,
-                service: serviceName,
-                barber: barberDisplay,
-                date,
-                time,
-                price: '',
-                notes: notes || ''
-              });
-
-              res.status(201).json({
-                success: true,
-                message: 'Afspraak succesvol aangemaakt!',
-                data: { 
-                  id: this.lastID,
-                  name, 
-                  email, 
-                  service, 
-                  barber_name, 
-                  date, 
-                  time 
-                }
-              });
+        // === VALIDATIE: Check of kapper afwezig is ===
+        db.all(
+          'SELECT * FROM barber_absences WHERE barber_name = ? AND date = ?',
+          [barber_name, date],
+          (err2, absences) => {
+            if (err2) {
+              console.error('Database error:', err2);
+              return res.status(500).json({ success: false, error: 'Database fout' });
             }
+
+            if (absences && absences.length > 0) {
+              for (const absence of absences) {
+                if (absence.is_full_day) {
+                  return res.status(400).json({
+                    success: false,
+                    error: 'Deze kapper is deze dag niet beschikbaar (volle dag afwezig)'
+                  });
+                }
+                if (absence.start_time && absence.end_time) {
+                  if (time >= absence.start_time && time < absence.end_time) {
+                    return res.status(400).json({
+                      success: false,
+                      error: `Deze kapper is niet beschikbaar van ${absence.start_time} tot ${absence.end_time}`
+                    });
+                  }
+                }
+              }
+            }
+
+            // Get barberId
+            db.get('SELECT id FROM barbers WHERE name = ?', [barber_name], (err3, barber) => {
+              const bid = (!err3 && barber) ? barber.id : null;
+              const treatment = service || req.body.treatment;
+
+              db.run(
+                `INSERT INTO appointments (barberId, barber_name, name, email, phone, treatment, date, time, notes, status) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+                [bid, barber_name, name, email || '', phone || '', treatment, date, time, notes || ''],
+                function(err4) {
+                  if (err4) {
+                    console.error('Database error:', err4);
+                    return res.status(500).json({ 
+                      success: false,
+                      error: 'Afspraak kon niet worden aangemaakt' 
+                    });
+                  }
+
+                  // Verstuur bevestigingsmail (async, niet-blockend)
+                  const serviceName = servicesMap[treatment] || treatment;
+                  const barberDisplay = barberDisplayMap[barber_name] || barber_name;
+                  sendConfirmationEmail({
+                    email: email || '',
+                    name,
+                    service: serviceName,
+                    barber: barberDisplay,
+                    date,
+                    time,
+                    price: '',
+                    notes: notes || ''
+                  });
+
+                  res.status(201).json({
+                    success: true,
+                    message: 'Afspraak succesvol aangemaakt!',
+                    data: { 
+                      id: this.lastID,
+                      name, 
+                      email, 
+                      service, 
+                      barber_name, 
+                      date, 
+                      time 
+                    }
+                  });
+                }
+              );
+            });
+          }
         );
-        });
       }
     );
   } catch (err) {
@@ -647,6 +715,10 @@ app.get('/api/stats', authenticateToken, (req, res) => {
 });
 
 // ========== STATIC FILES & FALLBACK ==========
+
+// Mount admin routes
+const adminRouter = createAdminRoutes(db, authenticateToken, servicesMap);
+app.use('/api/admin', adminRouter);
 
 // Serve static files from the dist folder in production
 if (process.env.NODE_ENV === 'production') {
