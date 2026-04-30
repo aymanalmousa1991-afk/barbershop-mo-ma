@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Plus, X, Save, Trash2, Calendar, User } from 'lucide-react';
+import { Loader2, Plus, X, Save, Trash2, Calendar } from 'lucide-react';
 import { BarberManagement } from './BarberManagement';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';

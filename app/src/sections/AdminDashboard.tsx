@@ -85,7 +85,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   const [moveDate, setMoveDate] = useState('');
   const [moveTime, setMoveTime] = useState('');
   const [isMoving, setIsMoving] = useState(false);
-  const [barbersAgenda, setBarbersAgenda] = useState([]);
+  const [barbersAgenda, setBarbersAgenda] = useState<{key:string;name:string;color:{bg:string;text:string;border:string;light:string}}[]>([]);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
 
   // Nieuwe afspraak toevoegen
@@ -101,7 +101,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       const res = await fetch(API_URL + '/admin/barbers', { headers: { Authorization: 'Bearer ' + token } });
       const data = await res.json();
       if (data.success && data.data) {
-        setBarbersAgenda(data.data.filter((b) => b.is_active).map((b) => ({
+        setBarbersAgenda(data.data.filter((b: any) => b.is_active).map((b: any) => ({
           key: b.name,
           name: b.display_name,
           color: barberColors[b.name] || { bg: 'bg-stone-600', text: 'text-stone-600', border: 'border-stone-600', light: 'bg-stone-50 border-stone-200' },
@@ -508,7 +508,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                 <Label>Kapper</Label>
                 <select className="w-full mt-1 p-2 border rounded text-sm" value={moveTargetBarber} onChange={(e) => setMoveTargetBarber(e.target.value)}>
                   <option value="">Kies...</option>
-                  {barbersAgenda.map((b) => <option key={b.key} value={b.key}>{b.name}</option>)}
+                  {barbersAgenda.map((b: any) => <option key={b.key} value={b.key}>{b.name}</option>)}
                 </select>
               </div>
               <div>
@@ -586,7 +586,7 @@ function AddAppointmentDialog({
         <Label>Kapper</Label>
         <select className="w-full mt-1 p-2 border rounded" value={barber} onChange={(e) => setBarber(e.target.value)}>
           <option value="">Kies kapper...</option>
-          {barbersAgenda.map((b) => <option key={b.key} value={b.key}>{b.name}</option>)}
+          {barbersAgenda.map((b: any) => <option key={b.key} value={b.key}>{b.name}</option>)}
         </select>
             </div>
             <div>
