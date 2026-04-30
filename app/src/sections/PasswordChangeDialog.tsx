@@ -33,10 +33,10 @@ export function PasswordChangeDialog({ open, onClose }: PasswordChangeDialogProp
     setIsSaving(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/admin/change-password`, {
+      const response = await fetch(`${API_URL}/admin/auth/change-password`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+        body: JSON.stringify({ currentPassword, newPassword }),
       });
       const data = await response.json();
       if (data.success) {

@@ -5,7 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Plus, X, Save, Trash2, Calendar } from 'lucide-react';
+import { Loader2, Plus, X, Save, Trash2, Calendar, User } from 'lucide-react';
+import { BarberManagement } from './BarberManagement';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -155,6 +156,9 @@ export function AdminSettings() {
           <TabsTrigger value="absences" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
             Afwezigheid
           </TabsTrigger>
+          <TabsTrigger value="barbers" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
+            Kappers
+          </TabsTrigger>
         </TabsList>
 
         {/* SERVICES TAB */}
@@ -298,6 +302,11 @@ export function AdminSettings() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* BARBERS TAB */}
+        <TabsContent value="barbers">
+          <BarberManagement />
         </TabsContent>
       </Tabs>
 
