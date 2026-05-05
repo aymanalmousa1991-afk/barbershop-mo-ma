@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -18,7 +18,7 @@ const servicesMap = {
   'knippen-stylen': 'Knippen + stylen (wax)',
   'knippen-baard': 'Knippen + baard stylen/scheren',
   'senioren': 'Senioren 65+ knippen + stylen',
-  'tondeuse': 'Alles één lengte/kaalscheren',
+  'tondeuse': 'Alles Ã©Ã©n lengte/kaalscheren',
   'baard': 'Baard stylen of scheren',
   'baard-nek': 'Baard + neklijnen bijwerken',
   'jong-tm11': 'Jongens t/m 11 jaar',
@@ -31,7 +31,7 @@ const barberDisplayMap = {};
 db.all('SELECT name, display_name FROM barbers WHERE is_active = 1', (err, rows) => {
   if (!err && rows) {
     rows.forEach(r => { barberDisplayMap[r.name] = r.display_name; });
-    console.log('✅ Barber display names loaded:', JSON.stringify(barberDisplayMap));
+    console.log('âœ… Barber display names loaded:', JSON.stringify(barberDisplayMap));
   }
 });
 
@@ -252,16 +252,40 @@ app.get('/api/appointments/available-slots', (req, res) => {
       });
     }
 
-    // Business hours: 08:00 - 18:00 with 30-minute intervals
-    const businessHours = [
-      '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
-      '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
-      '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30'
-    ];
+  // Opening hours per day (0=Sun, 1=Mon, ..., 6=Sat)
+    const openingHours = {
+      1: { open: 10, close: 18 },
+      2: { open: 9, close: 18 },
+      3: { open: 9, close: 18 },
+      4: { open: 9, close: 18 },
+      5: { open: 9, close: 18 },
+      6: { open: 8, close: 17 },
+    };
+    const dateObj = new Date(date + "T12:00:00");
+    const dayOfWeek = dateObj.getDay();
+    const todayHours = openingHours[dayOfWeek];
+    const allSlots = [];
+    if (todayHours) {
+      for (let h = todayHours.open; h < todayHours.close; h++) {
+        for (let m = 0; m < 60; m += 15) {
+          allSlots.push(String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"));
+        }
+      }
+    }
 
-    // Get booked slots for this date and barber
+    // Service durations mapping (in minutes)
+    const serviceDurations = {
+      "knippen-stylen": 30, "knippen-baard": 45, "senioren": 30,
+      "tondeuse": 20, "baard": 15, "baard-nek": 25, "jong-tm11": 25, "jong-12-13": 30
+    };
+    const requestedDuration = (service && serviceDurations[service]) ? serviceDurations[service] : 30;
+    const CLOSING_MIN = todayHours ? todayHours.close * 60 : 18 * 60;
+
+    const toMin = (t) => { const p = t.split(":"); return parseInt(p[0]) * 60 + parseInt(p[1]); };
+
+    // Get booked slots (with treatment) for this date and barber
     db.all(
-      'SELECT time FROM appointments WHERE date = ? AND barber_name = ? AND status = "active"',
+      'SELECT time, treatment FROM appointments WHERE date = ? AND barber_name = ? AND status = "active"',
       [date, barber_name],
       (err, rows) => {
         if (err) {
@@ -271,6 +295,28 @@ app.get('/api/appointments/available-slots', (req, res) => {
             error: 'Beschikbare tijden konden niet worden opgehaald' 
           });
         }
+
+        // Block all 15-min start times that overlap with existing appointments
+        const blockedSlotsSet = new Set();
+        rows.forEach(row => {
+          const dur = serviceDurations[row.treatment] || 30;
+          const existingStart = toMin(row.time);
+          const existingEnd = existingStart + dur;
+          allSlots.forEach(slot => {
+            const slotMin = toMin(slot);
+            if (slotMin < existingEnd && slotMin + requestedDuration > existingStart) {
+              blockedSlotsSet.add(slot);
+            }
+          });
+        });
+
+        // Block slots that would end after closing time (18:00)
+        allSlots.forEach(slot => {
+          const slotMin = toMin(slot);
+          if (slotMin + requestedDuration > CLOSING_MIN) {
+            blockedSlotsSet.add(slot);
+          }
+        });
 
         const bookedTimes = rows.map(row => row.time);
 
@@ -284,12 +330,12 @@ app.get('/api/appointments/available-slots', (req, res) => {
               for (const absence of absences) {
                 if (absence.is_full_day) {
                   // Volledige dag geblokkeerd
-                  blockedTimes = [...businessHours];
+                  blockedTimes = [...allSlots];
                   break;
                 }
                 if (absence.start_time && absence.end_time) {
                   // Blok van start_time tot end_time blokkeren
-                  for (const slot of businessHours) {
+                  for (const slot of allSlots) {
                     if (slot >= absence.start_time && slot < absence.end_time) {
                       blockedTimes.push(slot);
                     }
@@ -299,8 +345,8 @@ app.get('/api/appointments/available-slots', (req, res) => {
             }
 
             // Verwijder geboekte en geblokkeerde tijden
-            const unavailableSlots = [...new Set([...bookedTimes, ...blockedTimes])];
-            const availableSlots = businessHours.filter(slot => !unavailableSlots.includes(slot));
+            const unavailableSlots = [...new Set([...bookedTimes, ...blockedTimes, ...Array.from(blockedSlotsSet)])];
+            const availableSlots = allSlots.filter(slot => !unavailableSlots.includes(slot));
 
             res.json({
               success: true,
@@ -363,23 +409,70 @@ app.post('/api/appointments', (req, res) => {
       });
     }
 
-    // Check of slot is already booked for this barber
-    db.get(
-      'SELECT * FROM appointments WHERE date = ? AND time = ? AND barber_name = ? AND status = "active"',
-      [date, time, barber_name],
-      (err, existing) => {
+    // === VALIDATIE: Check openingstijden voor deze dag ===
+    const openingHours = {
+      1: { open: 10, close: 18 },
+      2: { open: 9, close: 18 },
+      3: { open: 9, close: 18 },
+      4: { open: 9, close: 18 },
+      5: { open: 9, close: 18 },
+      6: { open: 8, close: 17 },
+    };
+    const dateObj = new Date(date + "T" + time);
+    const dayOfWeek = dateObj.getDay();
+    const todayHours = openingHours[dayOfWeek];
+
+    if (!todayHours) {
+      return res.status(400).json({
+        success: false,
+        error: "Op zondag zijn wij gesloten. Kies een andere dag."
+      });
+    }
+
+    const hour = parseInt(time.split(":")[0]);
+    if (hour < todayHours.open) {
+      return res.status(400).json({
+        success: false,
+        error: "Onze openingstijd op deze dag is " + String(todayHours.open).padStart(2, "0") + ":00. Kies een later tijdstip."
+      });
+    }
+
+    // === VALIDATIE: Check overlap met bestaande afspraken (rekening houdend met duur) ===
+    const postServiceDurations = {
+      "knippen-stylen": 30, "knippen-baard": 45, "senioren": 30,
+      "tondeuse": 20, "baard": 15, "baard-nek": 25, "jong-tm11": 25, "jong-12-13": 30
+    };
+    const newDuration = postServiceDurations[service] || 30;
+    const newStartMin = parseInt(time.split(":")[0]) * 60 + parseInt(time.split(":")[1]);
+    const newEndMin = newStartMin + newDuration;
+
+    // Check overlap with existing active appointments
+    db.all(
+      'SELECT time, treatment FROM appointments WHERE date = ? AND barber_name = ? AND status = "active"',
+      [date, barber_name],
+      (err, existingSlots) => {
         if (err) {
           console.error('Database error:', err);
-          return res.status(500).json({ 
-            success: false,
-            error: 'Database fout' 
-          });
+          return res.status(500).json({ success: false, error: 'Database fout' });
         }
 
-        if (existing) {
-          return res.status(409).json({ 
+        for (const existing of existingSlots) {
+          const existingDur = postServiceDurations[existing.treatment] || 30;
+          const existingStart = parseInt(existing.time.split(":")[0]) * 60 + parseInt(existing.time.split(":")[1]);
+          const existingEnd = existingStart + existingDur;
+          
+          if (newStartMin < existingEnd && newEndMin > existingStart) {
+            return res.status(409).json({ 
+              success: false,
+              error: 'Dit tijdstip overlapt met een bestaande afspraak' 
+            });
+          }
+        }
+
+        if (newEndMin > todayHours.close * 60) {
+          return res.status(400).json({
             success: false,
-            error: 'Dit tijdstip is al bezet voor deze kapper' 
+            error: 'Deze afspraak zou na sluitingstijd eindigen. Kies een eerder tijdstip.'
           });
         }
 
@@ -754,7 +847,7 @@ app.use((req, res) => {
 // Voeg reminder_sent kolom toe als die nog niet bestaat
 db.run(`ALTER TABLE appointments ADD COLUMN reminder_sent INTEGER DEFAULT 0`, (err) => {
   if (err && !err.message.includes('duplicate column')) {
-    console.error('⚠️ Kon reminder_sent kolom niet toevoegen:', err.message);
+    console.error('âš ï¸ Kon reminder_sent kolom niet toevoegen:', err.message);
   }
 });
 
@@ -766,7 +859,7 @@ async function checkAndSendReminders() {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-    console.log(`🔍 [Reminder] Checking appointments for ${tomorrowStr}...`);
+    console.log(`ðŸ” [Reminder] Checking appointments for ${tomorrowStr}...`);
 
     // Find all active appointments for tomorrow that haven't received a reminder yet
     db.all(
@@ -776,16 +869,16 @@ async function checkAndSendReminders() {
       [tomorrowStr],
       async (err, rows) => {
         if (err) {
-          console.error('❌ [Reminder] Database error:', err.message);
+          console.error('âŒ [Reminder] Database error:', err.message);
           return;
         }
 
         if (!rows || rows.length === 0) {
-          console.log(`📭 [Reminder] Geen herinneringen te versturen voor ${tomorrowStr}`);
+          console.log(`ðŸ“­ [Reminder] Geen herinneringen te versturen voor ${tomorrowStr}`);
           return;
         }
 
-        console.log(`📧 [Reminder] ${rows.length} herinnering(en) te versturen voor ${tomorrowStr}`);
+        console.log(`ðŸ“§ [Reminder] ${rows.length} herinnering(en) te versturen voor ${tomorrowStr}`);
 
         for (const appointment of rows) {
           if (!appointment.email) continue;
@@ -806,9 +899,9 @@ async function checkAndSendReminders() {
             // Markeer als herinnering verstuurd
             db.run('UPDATE appointments SET reminder_sent = 1 WHERE id = ?', [appointment.id], (updateErr) => {
               if (updateErr) {
-                console.error(`❌ [Reminder] Kon reminder status niet updaten voor ID ${appointment.id}:`, updateErr.message);
+                console.error(`âŒ [Reminder] Kon reminder status niet updaten voor ID ${appointment.id}:`, updateErr.message);
               } else {
-                console.log(`✅ [Reminder] Reminder gemarkeerd voor ID ${appointment.id}`);
+                console.log(`âœ… [Reminder] Reminder gemarkeerd voor ID ${appointment.id}`);
               }
             });
           }
@@ -816,7 +909,7 @@ async function checkAndSendReminders() {
       }
     );
   } catch (err) {
-    console.error('❌ [Reminder] Fout:', err.message);
+    console.error('âŒ [Reminder] Fout:', err.message);
   }
 }
 
@@ -833,25 +926,25 @@ try {
   reminderJob = cron.schedule(REMINDER_CRON_SCHEDULE, () => {
     checkAndSendReminders();
   });
-  console.log(`⏰ Reminder cron job gestart: "${REMINDER_CRON_SCHEDULE}"`);
+  console.log(`â° Reminder cron job gestart: "${REMINDER_CRON_SCHEDULE}"`);
 } catch (err) {
-  console.error('❌ Kon cron job niet starten:', err.message);
+  console.error('âŒ Kon cron job niet starten:', err.message);
 }
 
 // ========== START SERVER ==========
 
 app.listen(PORT, () => {
   console.log('');
-  console.log('🚀 Barbershop Mo&Ma Server');
-  console.log('━'.repeat(50));
-  console.log(`✅ Server draait op http://localhost:${PORT}`);
-  console.log(`📍 API: http://localhost:${PORT}/api`);
-  console.log(`📅 Afspraken: POST/GET /api/appointments`);
-  console.log(`🔐 Admin login: POST /api/auth/login`);
-  console.log(`📊 Stats: GET /api/stats`);
-  console.log(`📧 Email bevestigingen: ✅ actief`);
-  console.log(`⏰ Reminders: ✅ actief (elke 30 min)`);
-  console.log('━'.repeat(50));
+  console.log('ðŸš€ Barbershop Mo&Ma Server');
+  console.log('â”'.repeat(50));
+  console.log(`âœ… Server draait op http://localhost:${PORT}`);
+  console.log(`ðŸ“ API: http://localhost:${PORT}/api`);
+  console.log(`ðŸ“… Afspraken: POST/GET /api/appointments`);
+  console.log(`ðŸ” Admin login: POST /api/auth/login`);
+  console.log(`ðŸ“Š Stats: GET /api/stats`);
+  console.log(`ðŸ“§ Email bevestigingen: âœ… actief`);
+  console.log(`â° Reminders: âœ… actief (elke 30 min)`);
+  console.log('â”'.repeat(50));
   console.log('');
 
   // Verifieer email configuratie bij opstart

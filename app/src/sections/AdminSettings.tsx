@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -148,8 +148,11 @@ export function AdminSettings() {
     <div>
       <h1 className="text-3xl font-bold text-[#1a1a1a] logo-font mb-8">Instellingen</h1>
 
-      <Tabs defaultValue="services">
+      <Tabs defaultValue="home">
         <TabsList className="bg-stone-100 mb-6">
+          <TabsTrigger value="home" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
+            Home Teksten
+          </TabsTrigger>
           <TabsTrigger value="services" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
             Diensten
           </TabsTrigger>
@@ -160,6 +163,11 @@ export function AdminSettings() {
             Kappers
           </TabsTrigger>
         </TabsList>
+
+        {/* HOME CONTENT TAB */}
+        <TabsContent value="home">
+          <HomeContentEditor />
+        </TabsContent>
 
         {/* SERVICES TAB */}
         <TabsContent value="services">
@@ -194,7 +202,7 @@ export function AdminSettings() {
                         <td className="py-3 pr-4 font-medium">{s.name}</td>
                         <td className="py-3 pr-4">{s.duration}</td>
                         <td className="py-3 pr-4">&euro; {s.price}</td>
-                        <td className="py-3 pr-4">{s.is_active ? '✅' : '❌'}</td>
+                        <td className="py-3 pr-4">{s.is_active ? 'âœ…' : 'âŒ'}</td>
                         <td className="py-3">
                           <div className="flex gap-2">
                             <Button variant="outline" size="sm" onClick={() => { setEditingService(s); setShowServiceDialog(true); }}>
@@ -360,3 +368,107 @@ export function AdminSettings() {
     </div>
   );
 }
+{/* HomeContentEditor component */}
+function HomeContentEditor() {
+  const [content, setContent] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<string | null>(null);
+  const token = localStorage.getItem('token');
+
+  useEffect(() => {
+    fetchContent();
+  }, []);
+
+  const fetchContent = async () => {
+    try {
+      const res = await fetch(`${API_URL}/home-content`);
+      const data = await res.json();
+      if (data.success) setContent(data.data || {});
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveSection = async (section: string) => {
+    setSaving(section);
+    try {
+      await fetch(`${API_URL}/admin/home-content`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ section, content: content[section] || '' }),
+      });
+      await fetchContent();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  if (loading) {
+    return <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-stone-500" /></div>;
+  }
+
+    const sections = [
+    { key: 'hero_title', label: 'Hero Titel', type: 'text', default: 'Jouw Stijl, Ons Vakmanschap' },
+    { key: 'hero_subtitle', label: 'Hero Ondertitel', type: 'textarea', default: 'Welkom bij Barbershop Mo&Ma. Ontdek de beste barbershop in Volendam voor herenkapsels, baarden, bartrimmen en meer.' },
+    { key: 'opening_hours_title', label: 'Openingstijden Titel', type: 'text', default: 'Openingstijden' },
+    { key: 'opening_ma', label: 'Openingstijden Maandag', type: 'text', default: '10:00 - 18:00' },
+    { key: 'opening_di_vr', label: 'Openingstijden Di-Vrij', type: 'text', default: '09:00 - 18:00' },
+    { key: 'opening_za', label: 'Openingstijden Zaterdag', type: 'text', default: '08:00 - 17:00' },
+    { key: 'opening_zo', label: 'Openingstijden Zondag', type: 'text', default: 'Gesloten' },
+    { key: 'opening_afspraak', label: 'Op afspraak tekst', type: 'text', default: 'Ma, Di, Vr, Za: uitsluitend op afspraak' },
+    { key: 'opening_inloop', label: 'Inloop tekst', type: 'text', default: 'Wo, Do: Inloop' },
+    { key: 'welcome_text', label: 'Welkomsttekst Home', type: 'textarea', default: 'Welkom bij Barbershop Mo&Ma, dÃ© mannenkapper van Edam-Volendam.' },
+  ];
+
+  return (
+    <Card className="border-0 shadow-lg">
+      <CardHeader className="bg-gradient-to-r from-[#6b0f1a] to-[#8b1523]">
+        <CardTitle className="text-white flex items-center gap-2">
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+          Home Pagina Teksten
+        </CardTitle>
+        <p className="text-white/60 text-xs mt-1">
+          Pas de teksten op de home pagina aan. Wijzigingen worden direct opgeslagen.
+        </p>
+      </CardHeader>
+      <CardContent className="p-6">
+        <div className="space-y-6">
+          {sections.map((section) => (
+            <div key={section.key} className="border-b border-stone-100 pb-4">
+              <Label className="font-semibold text-[#1a1a1a]">{section.label}</Label>
+              {section.default && section.default !== (content[section.key] || "") && (
+                <span className="ml-2 text-xs text-stone-400">(origineel: <em>{section.default}</em>)</span>
+              )}
+              {section.type === 'textarea' ? (
+                <textarea
+                  className="w-full mt-2 p-3 border rounded-lg text-sm min-h-[100px]"
+                  value={content[section.key] || ''}
+                  onChange={(e) => setContent({ ...content, [section.key]: e.target.value })}
+                />
+              ) : (
+                <Input
+                  className="mt-2"
+                  value={content[section.key] || ''}
+                  onChange={(e) => setContent({ ...content, [section.key]: e.target.value })}
+                />
+              )}
+              <Button
+                size="sm"
+                onClick={() => saveSection(section.key)}
+                disabled={saving === section.key}
+                className="mt-2 bg-[#6b0f1a]"
+              >
+                {saving === section.key ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />...</> : 'Opslaan'}
+              </Button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+

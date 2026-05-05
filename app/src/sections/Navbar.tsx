@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Menu, X, Phone, Clock, MapPin } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 interface NavbarProps {
   onNavigate: (page: string) => void;
@@ -8,6 +9,7 @@ interface NavbarProps {
 }
 
 export function Navbar({ onNavigate, currentPage }: NavbarProps) {
+  const { isAuthenticated } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
 
@@ -21,9 +23,11 @@ export function Navbar({ onNavigate, currentPage }: NavbarProps) {
 
   const navItems = [
     { id: 'home', label: 'Home' },
+    { id: 'about', label: 'Over Ons' },
     { id: 'services', label: 'Tarieven' },
+    { id: 'photos', label: "Foto's" },
     { id: 'booking', label: 'Afspraak' },
-    { id: 'admin', label: 'Admin' },
+    ...(isAuthenticated ? [{ id: 'admin', label: 'Admin' }] : []),
   ];
 
   return (

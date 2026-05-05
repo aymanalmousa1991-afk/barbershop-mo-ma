@@ -86,6 +86,32 @@ db.serialize(() => {
     FOREIGN KEY (admin_id) REFERENCES admin(id)
   )`);
 
+  // Home content table (editbare teksten)
+  db.run(`CREATE TABLE IF NOT EXISTS home_content (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section TEXT UNIQUE NOT NULL,
+    content TEXT DEFAULT '',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // Photos table
+  db.run(`CREATE TABLE IF NOT EXISTS photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    filename TEXT UNIQUE NOT NULL,
+    caption TEXT DEFAULT '',
+    uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // Cancellation tokens table
+  db.run(`CREATE TABLE IF NOT EXISTS cancellation_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    appointment_id INTEGER NOT NULL,
+    token TEXT UNIQUE NOT NULL,
+    used INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (appointment_id) REFERENCES appointments(id)
+  )`);
+
   // Insert default services if table is empty
   db.get('SELECT COUNT(*) as count FROM services', (err, row) => {
     if (err) return;
@@ -121,6 +147,35 @@ db.serialize(() => {
       console.log(`ℹ️  ${row.count} barbers already exist`);
     }
   });
+
+
+  // Home content table for editable page texts
+  db.run(`CREATE TABLE IF NOT EXISTS home_content (
+    section TEXT PRIMARY KEY,
+    content TEXT,
+    updated_at TEXT DEFAULT (datetime('now'))
+  )`);
+
+  // Seed default home content values
+  const seedHomeContent = [
+    ["hero_title", "Jouw Stijl, Ons Vakmanschap"],
+    ["hero_subtitle", "In onze barbershop in het mooie centrum van Volendam kunnen mannen van jong tot oud terecht voor het knippen en stylen van hun haar. Ook voor uw baard en snor bent u bij ons aan het juiste adres."],
+    ["welcome_title", "Welkom bij Barbershop Mo&Ma"],
+    ["welcome_text", "In onze barbershop in het mooie centrum van Volendam kunnen mannen van jong tot oud terecht voor het knippen en stylen van hun haar. Ook voor uw baard en snor bent u bij ons aan het juiste adres."],
+    ["opening_hours_title", "Openingstijden"],
+    ["opening_ma", "10:00 - 18:00"],
+    ["opening_di_vr", "09:00 - 18:00"],
+    ["opening_za", "08:00 - 17:00"],
+    ["opening_zo", "Gesloten"],
+    ["opening_afspraak", "uitsluitend op afspraak"],
+    ["opening_inloop", "Inloop"],
+    ["quality_text", "Bij Mo&Ma staan kwaliteit en service voorop. Alle behandelingen worden uitgevoerd met professionele producten."],
+    ["about_title", "Over Ons"],
+    ["about_text", "Welkom bij Barbershop Mo & Ma, dé plek in Volendam voor de beste herenkapsels en baardverzorging. Wij, Mo en Ma, zijn gepassioneerde barbiers met jarenlange ervaring in het vak. Onze missie is om elke klant een unieke en persoonlijke ervaring te bieden, waarbij kwaliteit en klanttevredenheid voorop staan.\n\nBij Barbershop Mo & Ma geloven we in het creëren van een vriendelijke sfeer waar iedereen zich welkom voelt en waar altijd een bakje koffie voor u klaar staat. Of je nu komt voor een klassieke scheerbeurt, een trendy kapsel of een uitgebreide baardbehandeling, wij zorgen ervoor dat je er altijd op je best uitziet.\n\nKom langs bij Barbershop Mo & Ma en ervaar zelf waarom wij de favoriete barbershop van Edam-Volendam zijn en laat ons je helpen om je look naar een hoger niveau te tillen."]
+  ];
+  for (const [section, content] of seedHomeContent) {
+    db.run("INSERT OR IGNORE INTO home_content (section, content) VALUES (?, ?)", [section, content]);
+  }
 
   // Create or update admin user
   const adminPasswordHash = bcrypt.hashSync('Barber123!', 10);

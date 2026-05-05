@@ -33,12 +33,8 @@ const services = [
   { id: 'baard-nek', name: 'Baard + neklijnen bijwerken', price: '€21', duration: 20 },
   { id: 'jong-tm11', name: 'Jongens t/m 11 jaar', price: '€21', duration: 25 },
   { id: 'jong-12-13', name: 'Jongens 12-13 jaar', price: '€25', duration: 30 },
-];
-
-const timeSlots = [
-  '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
-  '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
-  '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30'
+  { id: 'wassen', name: 'Wassen', price: '€1,50', duration: 10 },
+  { id: 'wenkbrauwen', name: 'Wenkbrauwen epileren', price: '€12', duration: 10 },
 ];
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
@@ -110,8 +106,8 @@ export function Booking() {
     
     try {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      const response = await fetch(
-        `${API_URL}/appointments/available-slots?date=${dateStr}&barber_name=${formData.barber_name}&treatment=${formData.service}`
+            const response = await fetch(
+        `${API_URL}/appointments/available-slots?date=${dateStr}&barber_name=${formData.barber_name}&service=${formData.service}`
       );
       const result = await response.json();
       
@@ -223,8 +219,7 @@ export function Booking() {
             Reserveer Je Plek
           </h2>
           <p className="text-base sm:text-lg text-stone-600 px-2">
-            Maak eenvoudig een afspraak online. Wij zijn van maandag t/m zaterdag geopend, 
-            op afspraak of gewoon binnenlopen!
+            Maak eenvoudig een afspraak online. Wij zijn van maandag t/m zaterdag geopend: uitsluitend op afspraak (Ma, Di, Vr, Za) of gewoon binnenlopen (Wo, Do)!
           </p>
         </div>
 
@@ -390,28 +385,24 @@ export function Booking() {
                               Kies een tijdstip:
                             </h4>
                             
-                            {isLoadingSlots ? (
+                                                        {isLoadingSlots ? (
                               <div className="flex items-center justify-center py-8 bg-stone-50 rounded-xl">
                                 <Loader2 className="h-5 w-5 animate-spin text-[#6b0f1a]" />
                                 <span className="ml-2 text-stone-600">Tijden laden...</span>
                               </div>
                             ) : availableSlots.length > 0 ? (
                               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-1.5 sm:gap-2 max-h-48 sm:max-h-64 overflow-y-auto p-1">
-                                {timeSlots.map((slot) => {
-                                  const isAvailable = availableSlots.includes(slot);
+                                {availableSlots.map((slot) => {
                                   const isSelected = formData.time === slot;
                                   return (
                                     <button
                                       key={slot}
                                       type="button"
-                                      disabled={!isAvailable}
                                       onClick={() => setFormData(prev => ({ ...prev, time: slot }))}
                                       className={`py-1.5 sm:py-2.5 px-1 sm:px-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium transition-all duration-200 ${
                                         isSelected
                                           ? 'bg-[#6b0f1a] text-white shadow-lg shadow-[#6b0f1a]/30 scale-105'
-                                          : isAvailable
-                                            ? 'bg-white border border-stone-200 sm:border-2 text-stone-700 hover:border-[#d4af37] hover:text-[#6b0f1a] hover:shadow-md'
-                                            : 'bg-stone-50 text-stone-300 cursor-not-allowed line-through'
+                                          : 'bg-white border border-stone-200 sm:border-2 text-stone-700 hover:border-[#d4af37] hover:text-[#6b0f1a] hover:shadow-md'
                                       }`}
                                     >
                                       {slot}

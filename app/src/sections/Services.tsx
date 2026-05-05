@@ -1,4 +1,5 @@
-import { Card, CardContent } from '@/components/ui/card';
+﻿import { Card, CardContent } from '@/components/ui/card';
+import { useHomeContent } from '@/hooks/useHomeContent';
 import { Button } from '@/components/ui/button';
 import { Scissors, Sparkles, User, Gift, Check } from 'lucide-react';
 
@@ -10,7 +11,7 @@ const herenServices = [
   { name: 'Knippen + stylen (wax)', price: '€26', duration: '30 min' },
   { name: 'Knippen + baard stylen of scheren', price: '€37,50', duration: '45 min' },
   { name: 'Senioren 65+ knippen + stylen', price: '€22', duration: '30 min' },
-  { name: 'Alles één lengte of kaalscheren', price: '€19', duration: '20 min' },
+  { name: 'Alles Ã©Ã©n lengte of kaalscheren', price: '€19', duration: '20 min' },
 ];
 
 const baardServices = [
@@ -35,6 +36,7 @@ const inclusiefItems = [
 ];
 
 export function Services({ onNavigate }: ServicesProps) {
+  const { content } = useHomeContent();
   return (
     <section id="services" className="w-full py-24 bg-[#faf9f7]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -46,13 +48,12 @@ export function Services({ onNavigate }: ServicesProps) {
           <h2 className="text-4xl sm:text-5xl font-bold text-[#1a1a1a] mt-4 mb-6 logo-font">
             Tarieven
           </h2>
-          <p className="text-lg text-stone-600">
-            Bij Mo&Ma staan kwaliteit en service voorop. Alle behandelingen 
-            worden uitgevoerd met professionele producten.
+                    <p className="text-lg text-stone-600">
+            {content.quality_text || "Bij Mo&Ma staan kwaliteit en service voorop. Alle behandelingen worden uitgevoerd met professionele producten."}
           </p>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-8">
+        <div className="grid lg:grid-cols-4 gap-8">
           {/* Heren */}
           <Card className="card-hover border-0 shadow-lg overflow-hidden">
             <div className="bg-[#6b0f1a] p-6">
@@ -72,7 +73,7 @@ export function Services({ onNavigate }: ServicesProps) {
                   >
                     <div>
                       <p className="font-medium text-[#1a1a1a]">{service.name}</p>
-                      <p className="text-sm text-stone-500">{service.duration}</p>
+                      
                     </div>
                     <span className="text-xl font-bold text-[#6b0f1a]">{service.price}</span>
                   </div>
@@ -100,7 +101,7 @@ export function Services({ onNavigate }: ServicesProps) {
                   >
                     <div>
                       <p className="font-medium text-[#1a1a1a]">{service.name}</p>
-                      <p className="text-sm text-stone-500">{service.duration}</p>
+                      
                     </div>
                     <span className="text-xl font-bold text-[#6b0f1a]">{service.price}</span>
                   </div>
@@ -119,7 +120,7 @@ export function Services({ onNavigate }: ServicesProps) {
                     >
                       <div>
                         <p className="text-sm text-[#1a1a1a]">{service.name}</p>
-                        <p className="text-xs text-stone-500">{service.duration}</p>
+                        
                       </div>
                       <span className="font-bold text-[#6b0f1a]">{service.price}</span>
                     </div>
@@ -129,14 +130,14 @@ export function Services({ onNavigate }: ServicesProps) {
             </CardContent>
           </Card>
 
-          {/* Extra's & Acties */}
+                    {/* Extra Services */}
           <Card className="card-hover border-0 shadow-lg overflow-hidden">
             <div className="bg-gradient-to-r from-[#d4af37] to-[#b8941f] p-6">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center">
                   <Gift className="h-6 w-6 text-[#d4af37]" />
                 </div>
-                <h3 className="text-2xl font-bold text-white logo-font">Extra's & Acties</h3>
+                <h3 className="text-2xl font-bold text-white logo-font">Extra Services</h3>
               </div>
             </div>
             <CardContent className="p-6">
@@ -166,15 +167,28 @@ export function Services({ onNavigate }: ServicesProps) {
                   ))}
                 </ul>
               </div>
+            </CardContent>
+          </Card>
 
+          {/* Extra's & Acties */}
+          <Card className="card-hover border-0 shadow-lg overflow-hidden">
+            <div className="bg-[#6b0f1a] p-6">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-[#d4af37] rounded-full flex items-center justify-center">
+                  <Gift className="h-6 w-6 text-[#6b0f1a]" />
+                </div>
+                <h3 className="text-2xl font-bold text-white logo-font">Extra's & Acties</h3>
+              </div>
+            </div>
+            <CardContent className="p-6">
               {/* Stempelkaart */}
-              <div className="mt-6 p-4 bg-[#6b0f1a] rounded-lg text-white">
-                <h4 className="font-bold mb-2 flex items-center gap-2">
-                  <Gift className="h-4 w-4 text-[#d4af37]" />
-                  Stempelkaart Actie
+              <div className="p-4 bg-[#faf9f7] rounded-lg">
+                <h4 className="font-bold mb-2 flex items-center gap-2 text-[#6b0f1a]">
+                  <Gift className="h-4 w-4" />
+                  Stempelkaart &mdash; Vaste Actie
                 </h4>
-                <p className="text-sm text-stone-300">
-                  Na 10 stempels een haar/baard product naar keuze cadeau!
+                <p className="text-sm text-stone-600">
+                  Na 10 stempels krijgt u een haar/baard product naar keuze cadeau!
                 </p>
               </div>
             </CardContent>
@@ -206,3 +220,4 @@ export function Services({ onNavigate }: ServicesProps) {
     </section>
   );
 }
+

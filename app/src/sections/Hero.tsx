@@ -1,4 +1,5 @@
-import { Button } from '@/components/ui/button';
+﻿import { Button } from '@/components/ui/button';
+import { useHomeContent } from '@/hooks/useHomeContent';
 import { ArrowRight, Calendar, Scissors, Award } from 'lucide-react';
 
 interface HeroProps {
@@ -6,6 +7,7 @@ interface HeroProps {
 }
 
 export function Hero({ onNavigate }: HeroProps) {
+  const { content } = useHomeContent();
   return (
     <section className="relative w-full min-h-[700px] flex items-center overflow-hidden">
       {/* Background Image with Overlay */}
@@ -27,12 +29,12 @@ export function Hero({ onNavigate }: HeroProps) {
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#d4af37]/20 border border-[#d4af37]/40 rounded-full">
               <Award className="h-4 w-4 text-[#d4af37]" />
               <span className="text-[#d4af37] text-sm font-medium tracking-wide">
-                Dé mannenkapper van Edam-Volendam
+                DÃ© mannenkapper van Edam-Volendam
               </span>
             </div>
             
-            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold leading-tight">
-              <span className="logo-font-italic text-[#d4af37]">Welkom bij</span>
+                        <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold leading-tight">
+              <span className="logo-font-italic text-[#d4af37]">{content.hero_title || 'Welkom bij'}</span>
               <br />
               <span className="logo-font">Barbershop</span>
               <br />
@@ -44,9 +46,7 @@ export function Hero({ onNavigate }: HeroProps) {
             </h1>
             
             <p className="text-lg text-stone-300 max-w-lg leading-relaxed">
-              In onze barbershop in het mooie centrum van Volendam kunnen mannen 
-              van jong tot oud terecht voor het knippen en stylen van hun haar. 
-              Ook voor uw baard en snor bent u bij ons aan het juiste adres.
+              {content.hero_subtitle || "In onze barbershop in het mooie centrum van Volendam kunnen mannen van jong tot oud terecht voor het knippen en stylen van hun haar. Ook voor uw baard en snor bent u bij ons aan het juiste adres."}
             </p>
             
             <div className="flex flex-wrap gap-4">
@@ -85,35 +85,35 @@ export function Hero({ onNavigate }: HeroProps) {
           </div>
           
           {/* Right side - Opening hours card */}
-          <div className="hidden lg:block">
+                    <div className="hidden lg:block">
             <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20 max-w-md ml-auto">
               <h3 className="text-2xl font-bold text-white mb-6 logo-font">
-                Openingstijden
+                {content.opening_hours_title || 'Openingstijden'}
               </h3>
               <div className="space-y-3">
                 <div className="flex justify-between items-center py-2 border-b border-white/10">
                   <span className="text-stone-300">Maandag</span>
-                  <span className="text-white font-medium">10:00 - 18:00</span>
+                  <span className="text-white font-medium">{content.opening_ma || '10:00 - 18:00'}</span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-white/10">
                   <span className="text-stone-300">Dinsdag - Vrijdag</span>
-                  <span className="text-white font-medium">09:00 - 18:00</span>
+                  <span className="text-white font-medium">{content.opening_di_vr || '09:00 - 18:00'}</span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-white/10">
                   <span className="text-stone-300">Zaterdag</span>
-                  <span className="text-white font-medium">08:00 - 17:00</span>
+                  <span className="text-white font-medium">{content.opening_za || '08:00 - 17:00'}</span>
                 </div>
                 <div className="flex justify-between items-center py-2">
                   <span className="text-stone-300">Zondag</span>
-                  <span className="text-stone-500">Gesloten</span>
+                  <span className="text-stone-500">{content.opening_zo || 'Gesloten'}</span>
                 </div>
               </div>
               <div className="mt-6 pt-6 border-t border-white/10">
                 <p className="text-sm text-stone-400">
-                  <span className="text-[#d4af37]">Ma, Di, Vr, Za:</span> Op afspraak
+                  <span className="text-[#d4af37]">Ma, Di, Vr, Za:</span> {content.opening_afspraak || 'uitsluitend op afspraak'}
                 </p>
                 <p className="text-sm text-stone-400 mt-1">
-                  <span className="text-[#d4af37]">Wo, Do:</span> Inloop
+                  <span className="text-[#d4af37]">Wo, Do:</span> {content.opening_inloop || 'Inloop'}
                 </p>
               </div>
             </div>
@@ -123,3 +123,4 @@ export function Hero({ onNavigate }: HeroProps) {
     </section>
   );
 }
+

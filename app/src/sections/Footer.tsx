@@ -1,10 +1,14 @@
-import { MapPin, Phone, Mail, Clock, Instagram, Facebook, MessageCircle, Award } from 'lucide-react';
+﻿import { MapPin, Phone, Mail, Clock, Instagram, Facebook, MessageCircle, Award } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { useHomeContent } from '@/hooks/useHomeContent';
 
 interface FooterProps {
   onNavigate: (page: string) => void;
 }
 
 export function Footer({ onNavigate }: FooterProps) {
+  const { isAuthenticated } = useAuth();
+  const { content } = useHomeContent();
   return (
     <footer className="w-full bg-[#1a1a1a] text-stone-400">
       {/* Main Footer */}
@@ -16,12 +20,13 @@ export function Footer({ onNavigate }: FooterProps) {
               onClick={() => onNavigate('home')}
               className="flex items-center gap-1 hover:opacity-90 transition-opacity"
             >
+              <span className="logo-font text-2xl text-white">Barbershop</span>
               <span className="logo-font text-4xl text-white">Mo</span>
               <span className="logo-font-italic text-3xl text-[#d4af37]">&</span>
               <span className="logo-font text-4xl text-white">Ma</span>
             </button>
             <p className="text-sm leading-relaxed">
-              Dé mannenkapper van Edam-Volendam. In onze barbershop in het 
+              DÃ© mannenkapper van Edam-Volendam. In onze barbershop in het 
               mooie centrum van Volendam kunnen mannen van jong tot oud 
               terecht voor het knippen en stylen van hun haar.
             </p>
@@ -70,6 +75,14 @@ export function Footer({ onNavigate }: FooterProps) {
               </li>
               <li>
                 <button 
+                  onClick={() => onNavigate('about')}
+                  className="hover:text-[#d4af37] transition-colors"
+                >
+                  Over Ons
+                </button>
+              </li>
+              <li>
+                <button 
                   onClick={() => onNavigate('services')}
                   className="hover:text-[#d4af37] transition-colors"
                 >
@@ -78,12 +91,21 @@ export function Footer({ onNavigate }: FooterProps) {
               </li>
               <li>
                 <button 
+                  onClick={() => onNavigate('photos')}
+                  className="hover:text-[#d4af37] transition-colors"
+                >
+                  Foto's
+                </button>
+              </li>
+                            <li>
+                <button 
                   onClick={() => onNavigate('booking')}
                   className="hover:text-[#d4af37] transition-colors"
                 >
                   Afspraak Maken
                 </button>
               </li>
+              {isAuthenticated && (
               <li>
                 <button 
                   onClick={() => onNavigate('admin')}
@@ -92,6 +114,7 @@ export function Footer({ onNavigate }: FooterProps) {
                   Admin
                 </button>
               </li>
+              )}
             </ul>
           </div>
 
@@ -150,7 +173,7 @@ export function Footer({ onNavigate }: FooterProps) {
             </ul>
             <div className="mt-4 pt-4 border-t border-stone-800">
               <p className="text-xs text-stone-500">
-                Ma, Di, Vr, Za: Op afspraak<br />
+                Ma, Di, Vr, Za: uitsluitend op afspraak<br />
                 Wo, Do: Inloop
               </p>
             </div>
@@ -174,3 +197,4 @@ export function Footer({ onNavigate }: FooterProps) {
     </footer>
   );
 }
+

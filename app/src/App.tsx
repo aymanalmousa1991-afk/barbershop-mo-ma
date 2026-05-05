@@ -7,10 +7,17 @@ import { Booking } from '@/sections/Booking';
 import { AdminLogin } from '@/sections/AdminLogin';
 import { AdminDashboard } from '@/sections/AdminDashboard';
 import { Footer } from '@/sections/Footer';
+import { AboutPage } from '@/sections/AboutPage';
+import { PhotoGallery } from '@/sections/PhotoGallery';
 import { Toaster } from '@/components/ui/sonner';
 
 function AppContent() {
-  const [currentPage, setCurrentPage] = useState('home');
+  const [currentPage, setCurrentPage] = useState(() => {
+    // Check URL parameter voor directe navigatie
+    const params = new URLSearchParams(window.location.search);
+    const page = params.get('page');
+    return page || 'home';
+  });
   const { isAuthenticated } = useAuth();
 
   const handleNavigate = (page: string) => {
@@ -27,15 +34,15 @@ function AppContent() {
             <Services onNavigate={handleNavigate} />
           </>
         );
+      case 'about':
+        return <AboutPage onNavigate={handleNavigate} />;
+      case 'photos':
+        return <PhotoGallery />;
       case 'services':
         return <Services onNavigate={handleNavigate} />;
       case 'booking':
         return <Booking />;
       case 'admin':
-        if (isAuthenticated) {
-          return <AdminDashboard onNavigate={handleNavigate} />;
-        }
-        return <AdminLogin onNavigate={handleNavigate} />;
       case 'admin-dashboard':
         if (isAuthenticated) {
           return <AdminDashboard onNavigate={handleNavigate} />;
@@ -51,7 +58,7 @@ function AppContent() {
     }
   };
 
-  const showFooter = !['admin', 'admin-dashboard'].includes(currentPage);
+  const showFooter = !['admin', 'admin-dashboard', 'photos'].includes(currentPage);
 
   return (
     <div className="min-h-screen bg-[#faf9f7] flex flex-col">
