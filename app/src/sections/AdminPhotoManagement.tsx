@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Upload, Trash2, X } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
-const UPLOADS_URL = import.meta.env.VITE_UPLOADS_URL || 'http://localhost:3001/uploads/';
+const UPLOADS_URL = API_URL.replace('/api', '/uploads/');
 
 interface Photo { id: number; filename: string; caption: string; uploaded_at: string; }
 
