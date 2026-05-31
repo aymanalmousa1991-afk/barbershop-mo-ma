@@ -1073,12 +1073,52 @@ app.get('/api/photos', (req, res) => {
 const UPLOADS_DIR = process.env.FLY_VM ? '/app/data/uploads' : path.join(__dirname, '../uploads');
 
 // Serve uploads met correcte headers
-app.use('/uploads', express.static(UPLOADS_DIR, {
-  setHeaders: (res) => {
+app.use('/uploads', (req, res, next) => {
+  const ext = path.extname(req.path).toLowerCase();
+  const mimeTypes = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+  };
+  if (mimeTypes[ext]) {
+    res.set('Content-Type', mimeTypes[ext]);
+  }
+  res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  next();
+}, express.static(UPLOADS_DIR));imeTypes[ext]);
+    }
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
     res.set('Access-Control-Allow-Origin', '*');
+    res.set('Timing-Allow-Origin', '*');
   }
 }));
+
+// Voeg een endpoint toe dat foto URLs retourneert met volledige HTTPS URLs
+app.get('/api/photos/full', (req, res) => {
+  try {
+    db.all('SELECT id, filename, caption, uploaded_at FROM photos ORDER BY uploaded_at DESC', (err, rows) => {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({ success: false, error: 'Fotos ophalen mislukt' });
+      }
+      const baseUrl = process.env.FLY_APP_URL || 'https://barbershop-mo-ma-api.fly.dev';
+      const photos = (rows || []).map(row => ({
+        ...row,
+        url: `${baseUrl}/uploads/photos/${row.filename}`
+      }));
+      res.json({ success: true, data: photos });
+    });
+  } catch (err) {
+    console.error('Error:', err);
+    res.status(500).json({ success: false, error: 'Interne server fout' });
+  }
+});
 
 // ========== STATIC FILES & FALLBACK ==========
 
