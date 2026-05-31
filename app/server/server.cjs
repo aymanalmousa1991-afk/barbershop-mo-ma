@@ -11,7 +11,7 @@ const createAdminRoutes = require('./adminRoutes.cjs');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const JWT_SECRET = process.env.JWT_SECRET || 'barbershop-mo-ma-secret-key-2024';
+const JWT_SECRET = process.env.JWT_SECRET || require('crypto').randomBytes(32).toString('hex');
 
 // ========== SERVICE & BARBER MAPPING ==========
 
@@ -74,7 +74,7 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3001').split(',').map(s => s.trim());
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3001,https://barbershop-mo-ma.pages.dev').split(',').map(s => s.trim());
 const corsOptions = {
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
@@ -609,7 +609,7 @@ app.post('/api/appointments', (req, res) => {
                   }
 
                                     // Genereer annuleringstoken en verstuur bevestigingsmail
-                  const APP_URL = process.env.APP_URL || 'http://localhost:5173';
+                  const APP_URL = process.env.APP_URL || 'https://barbershop-mo-ma.pages.dev';
                   createCancellationToken(this.lastID, (cancelToken) => {
                     const cancelLink = cancelToken ? `${APP_URL}/annuleren?token=${cancelToken}` : '';
                     const serviceName = servicesMap[treatment] || treatment;
@@ -1159,7 +1159,7 @@ async function checkAndSendReminders() {
 
           const serviceName = servicesMap[appointment.treatment] || appointment.treatment;
           const barberDisplay = barberDisplayMap[appointment.barber_name] || appointment.barber_name;
-          const APP_URL = process.env.APP_URL || 'http://localhost:5173';
+          const APP_URL = process.env.APP_URL || 'https://barbershop-mo-ma.pages.dev';
           const cancelLink = appointment.cancel_token ? `${APP_URL}/annuleren?token=${appointment.cancel_token}` : '';
 
           const result = await sendReminderEmail({
@@ -1247,7 +1247,7 @@ async function checkAndSend30MinReminders() {
 
           const serviceName = servicesMap[appointment.treatment] || appointment.treatment;
           const barberDisplay = barberDisplayMap[appointment.barber_name] || appointment.barber_name;
-          const APP_URL = process.env.APP_URL || 'http://localhost:5173';
+          const APP_URL = process.env.APP_URL || 'https://barbershop-mo-ma.pages.dev';
           const cancelLink = appointment.cancel_token ? `${APP_URL}/annuleren?token=${appointment.cancel_token}` : '';
 
           console.log(`📧 [Reminder 30min] Sturen naar ${appointment.email} voor afspraak om ${appointment.time}`);
