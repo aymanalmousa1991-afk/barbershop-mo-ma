@@ -1074,30 +1074,14 @@ const UPLOADS_DIR = process.env.FLY_VM ? '/app/data/uploads' : path.join(__dirna
 
 // Serve uploads met correcte headers
 app.use('/uploads', (req, res, next) => {
-  const ext = path.extname(req.path).toLowerCase();
-  const mimeTypes = {
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-    '.svg': 'image/svg+xml',
-  };
-  if (mimeTypes[ext]) {
-    res.set('Content-Type', mimeTypes[ext]);
-  }
   res.set('Cross-Origin-Resource-Policy', 'cross-origin');
   res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  res.set('X-Content-Type-Options', 'nosniff');
   next();
-}, express.static(UPLOADS_DIR));imeTypes[ext]);
-    }
-    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-    res.set('Access-Control-Allow-Origin', '*');
-    res.set('Timing-Allow-Origin', '*');
-  }
-}));
+});
+
+// Serve uploads directory (na helmet middleware voor correcte CORS)
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 // Voeg een endpoint toe dat foto URLs retourneert met volledige HTTPS URLs
 app.get('/api/photos/full', (req, res) => {
