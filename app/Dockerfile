@@ -3,7 +3,7 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --ignore-scripts
+RUN npm ci
 
 COPY . .
 RUN npm run build
@@ -12,14 +12,13 @@ RUN npm run build
 FROM node:20-alpine AS production
 WORKDIR /app
 
-RUN apk add --no-cache wget python3 make g++
+RUN apk add --no-cache wget python3 py3-setuptools make g++
 
 COPY package*.json ./
 RUN npm ci --only=production --ignore-scripts && npm rebuild sqlite3 --build-from-source
 
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/server ./server
-COPY --from=build /app/package.json ./
 
 RUN mkdir -p /app/uploads/photos
 
