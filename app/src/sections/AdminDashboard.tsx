@@ -391,85 +391,58 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                   </Button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {barbersAgenda
-                    .filter((b: any) => !barberFilter || b.key === barberFilter)
-                    .map(({ key, name, color }: any) => {
-                    const barberAppointments = appointmentsByBarber(key);
-                    return (
-                      <Card key={key} className="border-0 shadow-lg overflow-hidden">
-                        <div className={`${color.bg} px-4 py-3`}>
-                          <h3 className="text-white font-bold text-lg flex items-center gap-2">
-                            <User className="h-5 w-5" />{name}
-                          </h3>
-                          <p className="text-white/80 text-xs">{barberAppointments.length} afspraak/pen</p>
-                        </div>
-                        <CardContent className="p-2">
-                          {barberAppointments.length === 0 && (
-                            <div className="text-center py-8 text-stone-400 text-sm">
-                              <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />Geen afspraken
-                            </div>
-                          )}
-                                                    <div className="space-y-0.5">
-                            {(() => {
-                              const occupiedBy: Record<string, Appointment> = {};
-                                                            barberAppointments.forEach(apt => {
-                                const dur = serviceMap[apt.service]?.duration || 30;
-                                const [sh, sm] = apt.time.split(":").map(Number);
-                                const startMin = sh * 60 + sm;
-                                const endMin = startMin + dur;
-                                timeSlots.forEach(slot => {
-                                  const [h, m] = slot.split(":").map(Number);
-                                  const slotMin = h * 60 + m;
-                                  if (slotMin >= startMin && slotMin < endMin) {
-                                    occupiedBy[slot] = apt;
-                                  }
-                                });
+                <div className="overflow-x-auto bg-white rounded-lg shadow-lg">
+                  <table className="w-full min-w-[500px]">
+                    <thead>
+                      <tr>
+                        <th className="sticky left-0 z-10 p-2 text-xs font-medium text-stone-500 border-b bg-white text-left w-16">Tijd</th>
+                        {barbersAgenda.filter((b: any) => !barberFilter || b.key === barberFilter).map(({ key, name, color }: any) => (
+                          <th key={key} className={'p-2 text-center text-sm font-bold text-white border-b ' + color.bg}>{name}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {timeSlots.filter(s => { const h=parseInt(s.split(':')[0]); return h>=8 && h<18; }).map((time) => {
+                        const filteredBarbers = barbersAgenda.filter((b: any) => !barberFilter || b.key === barberFilter);
+                        return (
+                          <tr key={time} className="hover:bg-stone-50 transition-colors">
+                            <td className="sticky left-0 z-10 p-2 text-xs font-medium text-stone-500 border-b bg-white">{time}</td>
+                            {filteredBarbers.map(({ key, name, color }: any) => {
+                              const apt = appointmentsByBarber(key).find(a => a.time === time);
+                              const isContinuation = !apt && appointmentsByBarber(key).some(a => {
+                                const dur = serviceMap[a.service]?.duration || 30;
+                                const [sh,sm] = a.time.split(':').map(Number);
+                                const [h,m] = time.split(':').map(Number);
+                                const slotMin = h*60+m;
+                                return slotMin > (sh*60+sm) && slotMin < (sh*60+sm+dur);
                               });
-                              return timeSlots.filter(slot => {
-                                if (barberAppointments.find(a => a.time === slot)) return true;
-                                if (!occupiedBy[slot]) return true;
-                                return false;
-                              }).map((time) => {
-                                const apt = barberAppointments.find(a => a.time === time);
-                                const isContinuation = !apt && occupiedBy[time];
-                                return (
-                                  <div key={time} className={`flex items-stretch min-h-[44px] rounded-lg transition-colors ${apt ? `${color.light} border ${color.border}` : isContinuation ? `border-l-4 ${color.border} bg-stone-50` : ""}`}>
-                                    <div className={`w-14 flex-shrink-0 flex items-start pt-2 px-2 text-xs font-medium ${apt ? "text-stone-500" : isContinuation ? "text-stone-300" : "text-stone-200"}`}>{isContinuation ? "" : time}</div>
-                                    <div className="flex-1 min-w-0 py-1.5 pr-2">
-                                      {apt ? (
-                                        <div className="group relative">
-                                          <p className={`text-sm font-semibold ${color.text} truncate`}>{apt.name}</p>
-                                          <p className="text-xs text-stone-500 truncate">{serviceMap[apt.service]?.name || apt.service} - {serviceMap[apt.service]?.duration || 30} min</p>
-                                          {apt.notes && <p className="text-xs text-stone-400 truncate">{apt.notes}</p>}
-                                          <div className="absolute -top-1 -right-1 flex gap-0.5">
-                                            <button onClick={() => { setAppointmentToMove(apt); setMoveDate(apt.date); setMoveTime(apt.time); setMoveDialogOpen(true); }} 
-                                              className="opacity-0 group-hover:opacity-100 transition-opacity text-blue-500 hover:text-blue-700 bg-white rounded-full p-1 shadow-sm" title="Verplaatsen">
-                                              <ArrowRight className="h-3.5 w-3.5" />
-                                            </button>
-                                            <button onClick={() => { setAppointmentToDelete(apt); setDeleteDialogOpen(true); }} 
-                                              className="opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 bg-white rounded-full p-1 shadow-sm" title="Verwijderen">
-                                              <Trash2 className="h-3.5 w-3.5" />
-                                            </button>
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <button onClick={() => { setAddBarber(key); setAddTime(time); setAddDialogOpen(true); }} 
-                                          className="w-full text-left group hover:bg-stone-100 rounded px-1 -mx-1 transition-colors">
-                                          <span className="text-xs text-stone-100 group-hover:text-stone-400 italic">+</span>
-                                        </button>
-                                      )}
+                              if (isContinuation) return <td key={key} className={'p-0 border-b border-l-4 bg-stone-50/50 ' + color.border}></td>;
+                              if (apt) return (
+                                <td key={key} className={'p-1 border-b border ' + color.light + ' ' + color.border}>
+                                  <div className="group relative">
+                                    <p className={'text-xs font-semibold truncate ' + color.text}>{apt.name}</p>
+                                    <p className="text-[10px] text-stone-500 truncate">{serviceMap[apt.service]?.name || apt.service}</p>
+                                    <div className="absolute top-0 right-0 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded p-0.5">
+                                      <button onClick={()=>{setAppointmentToMove(apt);setMoveDate(apt.date);setMoveTime(apt.time);setMoveDialogOpen(true);}} className="text-blue-500 hover:text-blue-700 p-0.5"><ArrowRight className="h-3 w-3"/></button>
+                                      <button onClick={()=>{setAppointmentToDelete(apt);setDeleteDialogOpen(true);}} className="text-red-500 hover:text-red-700 p-0.5"><Trash2 className="h-3 w-3"/></button>
                                     </div>
                                   </div>
-                                );
-                              });
-                            })()}
-                          </div>                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </>
+                                </td>
+                              );
+                              return (
+                                <td key={key} className="p-1 border-b border-stone-100">
+                                  <button onClick={()=>{setAddBarber(key);setAddTime(time);setAddDialogOpen(true);}} className="w-full flex items-center justify-center group min-h-[36px]">
+                                    <span className="text-stone-200 group-hover:text-stone-400 opacity-0 group-hover:opacity-100">+</span>
+                                  </button>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div></>
             ) : (
               <Card className="border-0 shadow-lg">
                 <CardHeader className="bg-gradient-to-r from-[#6b0f1a] to-[#8b1523]">

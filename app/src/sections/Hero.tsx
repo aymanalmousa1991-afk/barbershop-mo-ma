@@ -29,7 +29,7 @@ export function Hero({ onNavigate }: HeroProps) {
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#d4af37]/20 border border-[#d4af37]/40 rounded-full">
               <Award className="h-4 w-4 text-[#d4af37]" />
               <span className="text-[#d4af37] text-sm font-medium tracking-wide">
-                DÃ© mannenkapper van Edam-Volendam
+                Dé mannenkapper van Edam-Volendam
               </span>
             </div>
             

@@ -26,7 +26,7 @@ export function Footer({ onNavigate }: FooterProps) {
               <span className="logo-font text-4xl text-white">Ma</span>
             </button>
             <p className="text-sm leading-relaxed">
-              DÃ© mannenkapper van Edam-Volendam. In onze barbershop in het 
+              Dé mannenkapper van Edam-Volendam. In onze barbershop in het 
               mooie centrum van Volendam kunnen mannen van jong tot oud 
               terecht voor het knippen en stylen van hun haar.
             </p>

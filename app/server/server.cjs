@@ -1071,9 +1071,14 @@ app.get('/api/photos', (req, res) => {
 
 // Uploads directory - persistent op Fly.io
 const UPLOADS_DIR = process.env.FLY_VM ? '/app/data/uploads' : path.join(__dirname, '../uploads');
-  
-// Serve uploaded photos statically
-app.use('/uploads', express.static(UPLOADS_DIR));
+
+// Serve uploads met correcte headers
+app.use('/uploads', express.static(UPLOADS_DIR, {
+  setHeaders: (res) => {
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.set('Access-Control-Allow-Origin', '*');
+  }
+}));
 
 // ========== STATIC FILES & FALLBACK ==========
 
