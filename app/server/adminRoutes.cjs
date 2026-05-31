@@ -5,9 +5,35 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const multer = require('multer');
+const path = require('path');
 const router = express.Router();
 
-module.exports = function(db, authenticateToken, servicesMap) {
+// Multer configuratie voor foto uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, path.join(__dirname, '../uploads/photos'));
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, uniqueSuffix + ext);
+  }
+});
+const upload = multer({
+  storage: storage,
+  fileFilter: function (req, file, cb) {
+    const allowed = /\.(jpg|jpeg|png|gif|webp|svg)$/i;
+    if (allowed.test(path.extname(file.originalname))) {
+      cb(null, true);
+    } else {
+      cb(new Error('Alleen afbeeldingen zijn toegestaan (jpg, jpeg, png, gif, webp, svg)'));
+    }
+  },
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB max
+});
+
+module.exports = function(db, authenticateToken, servicesMap, invalidateServicesCache) {
 
   // ========== WACHTWOORD RESET ==========
 
@@ -104,7 +130,8 @@ module.exports = function(db, authenticateToken, servicesMap) {
           if (err.message.includes('UNIQUE')) return res.status(409).json({ success: false, error: 'Deze key bestaat al' });
           return res.status(500).json({ success: false, error: 'Dienst aanmaken mislukt' });
         }
-        servicesMap[key] = name;
+                servicesMap[key] = name;
+        if (invalidateServicesCache) invalidateServicesCache();
         res.status(201).json({ success: true, data: { id: this.lastID } });
       }
     );
@@ -118,6 +145,7 @@ module.exports = function(db, authenticateToken, servicesMap) {
         if (err) return res.status(500).json({ success: false, error: 'Dienst bijwerken mislukt' });
         if (this.changes === 0) return res.status(404).json({ success: false, error: 'Dienst niet gevonden' });
         if (name) servicesMap[req.params.key] = name;
+        if (invalidateServicesCache) invalidateServicesCache();
         res.json({ success: true, message: 'Dienst bijgewerkt' });
       }
     );
@@ -128,6 +156,7 @@ module.exports = function(db, authenticateToken, servicesMap) {
       if (err) return res.status(500).json({ success: false, error: 'Verwijderen mislukt' });
       if (this.changes === 0) return res.status(404).json({ success: false, error: 'Dienst niet gevonden' });
       delete servicesMap[req.params.key];
+      if (invalidateServicesCache) invalidateServicesCache();
       res.json({ success: true, message: 'Dienst verwijderd' });
     });
   });
@@ -296,11 +325,146 @@ module.exports = function(db, authenticateToken, servicesMap) {
     });
   });
 
-  // ========== BARBERS OPHALEN (admin) ==========
-  router.get('/barbers', authenticateToken, (req, res) => {
-    db.all("SELECT id, name, display_name, is_active FROM barbers ORDER BY display_name ASC", (err, rows) => {
-      if (err) return res.status(500).json({ success: false, error: "Fout" });
-      res.json({ success: true, data: rows || [] });
+    // ========== FOTO BEHEER (admin) ==========
+
+  // GET ALLE FOTO'S (admin)
+  router.get('/photos', authenticateToken, (req, res) => {
+    db.all('SELECT id, filename, caption, uploaded_at FROM photos ORDER BY uploaded_at DESC',
+      (err, rows) => {
+        if (err) return res.status(500).json({ success: false, error: 'Fotos ophalen mislukt' });
+        res.json({ success: true, data: rows || [] });
+      }
+    );
+  });
+
+  // POST - FOTO UPLOADEN (admin)
+  router.post('/photos', authenticateToken, upload.single('photo'), (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: 'Geen bestand geselecteerd' });
+      }
+      const filename = req.file.filename;
+      const caption = req.body.caption || '';
+      db.run(
+        'INSERT INTO photos (filename, caption) VALUES (?, ?)',
+        [filename, caption],
+        function(err) {
+          if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ success: false, error: 'Foto opslaan mislukt' });
+          }
+          res.status(201).json({
+            success: true,
+            message: 'Foto succesvol geupload',
+            data: { id: this.lastID, filename, caption }
+          });
+        }
+      );
+    } catch (err) {
+      console.error('Upload error:', err);
+      res.status(500).json({ success: false, error: 'Interne server fout' });
+    }
+  });
+
+  // DELETE - FOTO VERWIJDEREN (admin)
+  router.delete('/photos/:id', authenticateToken, (req, res) => {
+    const { id } = req.params;
+    db.get('SELECT filename FROM photos WHERE id = ?', [id], (err, row) => {
+      if (err) return res.status(500).json({ success: false, error: 'Database fout' });
+      if (!row) return res.status(404).json({ success: false, error: 'Foto niet gevonden' });
+
+      db.run('DELETE FROM photos WHERE id = ?', [id], function(err2) {
+        if (err2) return res.status(500).json({ success: false, error: 'Verwijderen mislukt' });
+        // Verwijder ook het bestand van de schijf (niet-blockend)
+        const fs = require('fs');
+        const filePath = path.join(__dirname, '../uploads/photos', row.filename);
+        fs.unlink(filePath, (unlinkErr) => {
+          if (unlinkErr) console.error('Kon bestand niet verwijderen:', unlinkErr.message);
+        });
+        res.json({ success: true, message: 'Foto verwijderd' });
+      });
+    });
+  });
+
+  // ========== RAPPORTAGE ==========
+
+    router.get('/report', authenticateToken, (req, res) => {
+    const { from, to } = req.query;
+    let query = 'SELECT *, treatment as service FROM appointments WHERE status = "active"';
+    const params = [];
+
+    if (from) { query += ' AND date >= ?'; params.push(from); }
+    if (to) { query += ' AND date <= ?'; params.push(to); }
+    query += ' ORDER BY date ASC, time ASC';
+
+    db.all(query, params, (err, rows) => {
+      if (err) return res.status(500).json({ success: false, error: 'Rapport ophalen mislukt' });
+
+      const appointments = rows || [];
+      const totalAppointments = appointments.length;
+
+      // Haal diensten uit de database voor dynamische prijzen en namen
+      db.all('SELECT * FROM services', (err2, servicesRows) => {
+        const servicesList = servicesRows || [];
+        const prices = {};
+        const serviceNames = {};
+        servicesList.forEach(s => {
+          prices[s.key] = s.price;
+          serviceNames[s.key] = s.name;
+        });
+
+        // Bereken omzet per service
+        const perServiceMap = {};
+        let totalRevenue = 0;
+        const uniqueClients = new Set();
+
+        appointments.forEach(r => {
+          const svcKey = r.treatment || r.service;
+          if (!perServiceMap[svcKey]) {
+            perServiceMap[svcKey] = { name: serviceNames[svcKey] || svcKey, count: 0, revenue: 0 };
+          }
+          perServiceMap[svcKey].count++;
+          const price = prices[svcKey] || 0;
+          perServiceMap[svcKey].revenue += price;
+          totalRevenue += price;
+          if (r.name) uniqueClients.add(r.name.toLowerCase().trim());
+        });
+
+        const perService = Object.values(perServiceMap);
+
+        // Per kapper
+        const perBarberMap = {};
+        appointments.forEach(r => {
+          const bn = r.barber_name || 'onbekend';
+          if (!perBarberMap[bn]) perBarberMap[bn] = { name: bn, count: 0 };
+          perBarberMap[bn].count++;
+        });
+        const barberDistribution = Object.values(perBarberMap);
+
+        // Drukste dag/tijd
+        let busiestDay = null;
+        if (appointments.length > 0) {
+          const dayCount = {};
+          appointments.forEach(r => {
+            if (!dayCount[r.date]) dayCount[r.date] = { date: r.date, count: 0 };
+            dayCount[r.date].count++;
+          });
+          busiestDay = Object.values(dayCount).sort((a, b) => b.count - a.count)[0] || null;
+        }
+
+        res.json({
+          success: true,
+          data: {
+            period: { from: from || 'begin', to: to || 'einde' },
+            totalAppointments,
+            totalRevenue,
+            uniqueCustomers: uniqueClients.size,
+            perService,
+            barberDistribution,
+            busiestDay
+          }
+        });
+      });
     });
   });
 

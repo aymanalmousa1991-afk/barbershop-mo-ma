@@ -24,20 +24,16 @@ import {
 import { format, addDays, isWeekend, parseISO, startOfDay } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
-const services = [
-  { id: 'knippen-stylen', name: 'Knippen + stylen (wax)', price: '€26', duration: 30 },
-  { id: 'knippen-baard', name: 'Knippen + baard stylen/scheren', price: '€37,50', duration: 45 },
-  { id: 'senioren', name: 'Senioren 65+ knippen + stylen', price: '€22', duration: 30 },
-  { id: 'tondeuse', name: 'Alles één lengte/kaalscheren', price: '€19', duration: 20 },
-  { id: 'baard', name: 'Baard stylen of scheren', price: '€20', duration: 15 },
-  { id: 'baard-nek', name: 'Baard + neklijnen bijwerken', price: '€21', duration: 20 },
-  { id: 'jong-tm11', name: 'Jongens t/m 11 jaar', price: '€21', duration: 25 },
-  { id: 'jong-12-13', name: 'Jongens 12-13 jaar', price: '€25', duration: 30 },
-  { id: 'wassen', name: 'Wassen', price: '€1,50', duration: 10 },
-  { id: 'wenkbrauwen', name: 'Wenkbrauwen epileren', price: '€12', duration: 10 },
-];
-
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+interface ServiceType {
+  key: string;
+  name: string;
+  price: number;
+  duration: number;
+  description?: string;
+  is_active: number;
+}
 
 interface BarberType {
   id: number;
@@ -60,19 +56,22 @@ export function Booking() {
     notes: '',
   });
   
-  const [barbers, setBarbers] = useState<BarberType[]>([]);
+    const [barbers, setBarbers] = useState<BarberType[]>([]);
+  const [services, setServices] = useState<ServiceType[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   
   const [isLoadingBarbers, setIsLoadingBarbers] = useState(false);
+  const [isLoadingServices, setIsLoadingServices] = useState(false);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch barbers on mount
+    // Fetch barbers and services on mount
   useEffect(() => {
     fetchBarbers();
+    fetchServices();
   }, []);
 
   const fetchBarbers = async () => {
@@ -88,6 +87,22 @@ export function Booking() {
       console.error('Error fetching barbers:', err);
     } finally {
       setIsLoadingBarbers(false);
+    }
+  };
+
+  const fetchServices = async () => {
+    setIsLoadingServices(true);
+    try {
+      const response = await fetch(`${API_URL}/services`);
+      const result = await response.json();
+      
+      if (result.success) {
+        setServices(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching services:', err);
+    } finally {
+      setIsLoadingServices(false);
     }
   };
 
@@ -199,7 +214,7 @@ export function Booking() {
     formData.date && 
     formData.time;
 
-  const selectedService = services.find(s => s.id === formData.service);
+    const selectedService = services.find(s => s.key === formData.service);
   const selectedBarber = barbers.find(b => b.name === formData.barber_name);
 
   const isDateDisabled = (date: Date) => {
@@ -270,13 +285,13 @@ export function Booking() {
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {services.map((service) => (
+                                                {services.map((service) => (
                           <button
-                            key={service.id}
+                            key={service.key}
                             type="button"
-                            onClick={() => setFormData(prev => ({ ...prev, service: service.id }))}
+                            onClick={() => setFormData(prev => ({ ...prev, service: service.key }))}
                             className={`p-4 rounded-xl border-2 transition-all text-left ${
-                              formData.service === service.id
+                              formData.service === service.key
                                 ? 'border-[#6b0f1a] bg-[#6b0f1a]/5'
                                 : 'border-stone-200 bg-white hover:border-[#6b0f1a]'
                             }`}
@@ -284,7 +299,7 @@ export function Booking() {
                             <div className="font-semibold text-[#1a1a1a]">{service.name}</div>
                             <div className="flex justify-between items-center mt-2">
                               <span className="text-xs text-stone-500">{service.duration} min</span>
-                              <span className="font-bold text-[#6b0f1a]">{service.price}</span>
+                              <span className="font-bold text-[#6b0f1a]">€ {service.price.toFixed(2).replace('.', ',')}</span>
                             </div>
                           </button>
                         ))}
@@ -517,7 +532,9 @@ export function Booking() {
                           </div>
                           <div className="pt-2 border-t border-stone-300 flex justify-between items-start">
                             <span className="text-stone-600">Prijs:</span>
-                            <span className="font-bold text-[#6b0f1a] text-lg">{selectedService?.price}</span>
+                            <span className="font-bold text-[#6b0f1a] text-lg">
+                              {selectedService ? '€ ' + selectedService.price.toFixed(2).replace('.', ',') : ''}
+                            </span>
                           </div>
                         </div>
                       </div>

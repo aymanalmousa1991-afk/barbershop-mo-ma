@@ -1,0 +1,18 @@
+🔧 Initializing database...
+✅ Database initialization complete
+⏰ Reminder cron job gestart: "*/30 * * * *"
+
+🚀 Barbershop Mo&Ma Server
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Server draait op http://localhost:3001
+📍 API: http://localhost:3001/api
+📅 Afspraken: POST/GET /api/appointments
+🔐 Admin login: POST /api/auth/login
+📊 Stats: GET /api/stats
+📧 Email bevestigingen: ✅ actief
+⏰ Reminders: ✅ actief (elke 30 min)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ℹ️  4 barbers already exist
+✅ Barber display names loaded: {"mo":"Mo","ma":"Ma","third":"Derde kapper","vierde":"Viede kapper"}
+ℹ️  Admin user exists, password synced

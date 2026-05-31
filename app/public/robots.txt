@@ -1,0 +1,4 @@
+﻿User-agent: *
+Allow: /
+
+Sitemap: https://barbershop-mo-ma.onrender.com/sitemap.xml

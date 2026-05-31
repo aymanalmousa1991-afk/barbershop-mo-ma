@@ -1,10 +1,11 @@
-﻿const express = require('express');
+const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('./database.cjs');
 const path = require('path');
 const cron = require('node-cron');
+const multer = require('multer');
 const { sendConfirmationEmail, sendReminderEmail, verifyEmailConfig } = require('./emailConfig.cjs');
 const createAdminRoutes = require('./adminRoutes.cjs');
 
@@ -14,26 +15,50 @@ const JWT_SECRET = process.env.JWT_SECRET || 'barbershop-mo-ma-secret-key-2024';
 
 // ========== SERVICE & BARBER MAPPING ==========
 
-const servicesMap = {
-  'knippen-stylen': 'Knippen + stylen (wax)',
-  'knippen-baard': 'Knippen + baard stylen/scheren',
-  'senioren': 'Senioren 65+ knippen + stylen',
-  'tondeuse': 'Alles Ã©Ã©n lengte/kaalscheren',
-  'baard': 'Baard stylen of scheren',
-  'baard-nek': 'Baard + neklijnen bijwerken',
-  'jong-tm11': 'Jongens t/m 11 jaar',
-  'jong-12-13': 'Jongens 12-13 jaar'
-};
-
+let servicesMap = {};
 const barberDisplayMap = {};
 
+// Helper: laad services uit database (cached)
+let cachedServices = [];
+let servicesCacheTime = 0;
+const CACHE_TTL = 30000;
+
+function loadServicesFromDB(callback) {
+  const now = Date.now();
+  if (cachedServices.length > 0 && (now - servicesCacheTime) < CACHE_TTL) {
+    return callback(null, cachedServices);
+  }
+  db.all("SELECT * FROM services WHERE is_active = 1", (err, rows) => {
+    if (err) return callback(err);
+    cachedServices = rows || [];
+    servicesCacheTime = Date.now();
+    (rows || []).forEach(r => { servicesMap[r.key] = r.name; });
+    callback(null, cachedServices);
+  });
+}
+
+function getDurationByKey(key, defaultDur = 30) {
+  const svc = cachedServices.find(s => s.key === key);
+  return svc ? svc.duration : defaultDur;
+}
+
+// Forceer cache leegmaken (wordt aangeroepen na admin wijzigingen)
+function invalidateServicesCache() {
+  cachedServices = [];
+  servicesCacheTime = 0;
+  loadServicesFromDB(() => {});
+}
+
 // Laad barber display namen bij opstarten
-db.all('SELECT name, display_name FROM barbers WHERE is_active = 1', (err, rows) => {
+db.all("SELECT name, display_name FROM barbers WHERE is_active = 1", (err, rows) => {
   if (!err && rows) {
     rows.forEach(r => { barberDisplayMap[r.name] = r.display_name; });
-    console.log('âœ… Barber display names loaded:', JSON.stringify(barberDisplayMap));
+    console.log("Barber display names loaded:", JSON.stringify(barberDisplayMap));
   }
 });
+
+// Laad services in cache bij opstarten
+loadServicesFromDB(() => {});
 
 // ========== MIDDLEWARE ==========
 
@@ -154,7 +179,38 @@ app.post('/api/auth/login', (req, res) => {
   }
 });
 
-// ========== BARBER ROUTES ==========
+// ========== PUBLIC SERVICES & BARBER ROUTES ==========
+
+/**
+ * GET /api/services
+ * Get list of all active services (publiek)
+ */
+app.get('/api/services', (req, res) => {
+  try {
+    db.all(
+      'SELECT * FROM services WHERE is_active = 1 ORDER BY name ASC',
+      (err, rows) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ 
+            success: false,
+            error: 'Diensten konden niet worden opgehaald' 
+          });
+        }
+        res.json({
+          success: true,
+          data: rows
+        });
+      }
+    );
+  } catch (err) {
+    console.error('Error:', err);
+    res.status(500).json({ 
+      success: false,
+      error: 'Interne server fout' 
+    });
+  }
+});
 
 /**
  * GET /api/barbers
@@ -273,12 +329,7 @@ app.get('/api/appointments/available-slots', (req, res) => {
       }
     }
 
-    // Service durations mapping (in minutes)
-    const serviceDurations = {
-      "knippen-stylen": 30, "knippen-baard": 45, "senioren": 30,
-      "tondeuse": 20, "baard": 15, "baard-nek": 25, "jong-tm11": 25, "jong-12-13": 30
-    };
-    const requestedDuration = (service && serviceDurations[service]) ? serviceDurations[service] : 30;
+        const requestedDuration = getDurationByKey(service || "", 30);
     const CLOSING_MIN = todayHours ? todayHours.close * 60 : 18 * 60;
 
     const toMin = (t) => { const p = t.split(":"); return parseInt(p[0]) * 60 + parseInt(p[1]); };
@@ -296,19 +347,21 @@ app.get('/api/appointments/available-slots', (req, res) => {
           });
         }
 
-        // Block all 15-min start times that overlap with existing appointments
-        const blockedSlotsSet = new Set();
-        rows.forEach(row => {
-          const dur = serviceDurations[row.treatment] || 30;
-          const existingStart = toMin(row.time);
-          const existingEnd = existingStart + dur;
-          allSlots.forEach(slot => {
-            const slotMin = toMin(slot);
-            if (slotMin < existingEnd && slotMin + requestedDuration > existingStart) {
-              blockedSlotsSet.add(slot);
-            }
-          });
-        });
+                // Block all 15-min start times that overlap with existing appointments
+                const blockedSlotsSet = new Set();
+                rows.forEach(row => {
+                  const dur = getDurationByKey(row.treatment || "", 30);
+                  const existingStart = toMin(row.time);
+                  const existingEnd = existingStart + dur;
+                  allSlots.forEach(slot => {
+                    const slotMin = toMin(slot);
+                    // Een slot is geblokkeerd als een nieuwe afspraak (startend op slotMin, duur=requestedDuration)
+                    // overlapt met de bestaande afspraak (start=existingStart, eind=existingEnd)
+                    if (slotMin < existingEnd && slotMin + requestedDuration > existingStart) {
+                      blockedSlotsSet.add(slot);
+                    }
+                  });
+                });
 
         // Block slots that would end after closing time (18:00)
         allSlots.forEach(slot => {
@@ -437,12 +490,8 @@ app.post('/api/appointments', (req, res) => {
       });
     }
 
-    // === VALIDATIE: Check overlap met bestaande afspraken (rekening houdend met duur) ===
-    const postServiceDurations = {
-      "knippen-stylen": 30, "knippen-baard": 45, "senioren": 30,
-      "tondeuse": 20, "baard": 15, "baard-nek": 25, "jong-tm11": 25, "jong-12-13": 30
-    };
-    const newDuration = postServiceDurations[service] || 30;
+        // === VALIDATIE: Check overlap met bestaande afspraken (rekening houdend met duur) ===
+    const newDuration = getDurationByKey(service || "", 30);
     const newStartMin = parseInt(time.split(":")[0]) * 60 + parseInt(time.split(":")[1]);
     const newEndMin = newStartMin + newDuration;
 
@@ -457,7 +506,7 @@ app.post('/api/appointments', (req, res) => {
         }
 
         for (const existing of existingSlots) {
-          const existingDur = postServiceDurations[existing.treatment] || 30;
+          const existingDur = getDurationByKey(existing.treatment || "", 30);
           const existingStart = parseInt(existing.time.split(":")[0]) * 60 + parseInt(existing.time.split(":")[1]);
           const existingEnd = existingStart + existingDur;
           
@@ -523,18 +572,23 @@ app.post('/api/appointments', (req, res) => {
                     });
                   }
 
-                  // Verstuur bevestigingsmail (async, niet-blockend)
-                  const serviceName = servicesMap[treatment] || treatment;
-                  const barberDisplay = barberDisplayMap[barber_name] || barber_name;
-                  sendConfirmationEmail({
-                    email: email || '',
-                    name,
-                    service: serviceName,
-                    barber: barberDisplay,
-                    date,
-                    time,
-                    price: '',
-                    notes: notes || ''
+                                    // Genereer annuleringstoken en verstuur bevestigingsmail
+                  const APP_URL = process.env.APP_URL || 'http://localhost:5173';
+                  createCancellationToken(this.lastID, (cancelToken) => {
+                    const cancelLink = cancelToken ? `${APP_URL}/annuleren?token=${cancelToken}` : '';
+                    const serviceName = servicesMap[treatment] || treatment;
+                    const barberDisplay = barberDisplayMap[barber_name] || barber_name;
+                    sendConfirmationEmail({
+                      email: email || '',
+                      name,
+                      service: serviceName,
+                      barber: barberDisplay,
+                      date,
+                      time,
+                      price: '',
+                      notes: notes || '',
+                      cancelLink
+                    });
                   });
 
                   res.status(201).json({
@@ -570,6 +624,111 @@ app.post('/api/appointments', (req, res) => {
 
 /**
  * GET /api/appointments
+ * Publieke route - annuleer een afspraak via token
+ */
+  app.get('/api/appointments/cancel', (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) {
+      return res.status(400).json({ success: false, error: 'Token is verplicht' });
+    }
+
+    db.get(
+      `SELECT ct.id as token_id, ct.appointment_id, a.name, a.date, a.time, a.treatment, a.barber_name
+       FROM cancellation_tokens ct
+       JOIN appointments a ON a.id = ct.appointment_id
+       WHERE ct.token = ? AND ct.used = 0 AND a.status = 'active'`,
+      [token],
+      (err, row) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ success: false, error: 'Database fout' });
+        }
+        if (!row) {
+          return res.status(404).json({ success: false, error: 'Ongeldige of verlopen annuleringslink' });
+        }
+
+        // Toon bevestigingspagina
+        res.json({
+          success: true,
+          data: {
+            appointment_id: row.appointment_id,
+            name: row.name,
+            date: row.date,
+            time: row.time,
+            treatment: row.treatment,
+            barber: row.barber_name
+          }
+        });
+      }
+    );
+  } catch (err) {
+    console.error('Error:', err);
+    res.status(500).json({ success: false, error: 'Interne server fout' });
+  }
+  });
+
+  /**
+ * POST /api/appointments/cancel
+ * Publieke route - bevestig annulering
+ */
+  app.post('/api/appointments/cancel', (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ success: false, error: 'Token is verplicht' });
+    }
+
+    db.get(
+      'SELECT ct.id as token_id, ct.appointment_id FROM cancellation_tokens ct WHERE ct.token = ? AND ct.used = 0',
+      [token],
+      (err, row) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ success: false, error: 'Database fout' });
+        }
+        if (!row) {
+          return res.status(404).json({ success: false, error: 'Ongeldige of verlopen annuleringslink' });
+        }
+
+        // Annuleer de afspraak en markeer token als gebruikt
+        db.run('UPDATE appointments SET status = "cancelled", reminder_sent = 1 WHERE id = ?', [row.appointment_id], function(err2) {
+          if (err2) {
+            console.error('Database error:', err2);
+            return res.status(500).json({ success: false, error: 'Annuleren mislukt' });
+          }
+          db.run('UPDATE cancellation_tokens SET used = 1 WHERE id = ?', [row.token_id]);
+            
+          res.json({
+            success: true,
+            message: 'Afspraak succesvol geannuleerd'
+          });
+        });
+      }
+    );
+  } catch (err) {
+    console.error('Error:', err);
+    res.status(500).json({ success: false, error: 'Interne server fout' });
+  }
+  });
+
+  // Maak annuleringstoken aan na het aanmaken van een afspraak
+  function createCancellationToken(appointmentId, callback) {
+  const crypto = require('crypto');
+  const token = crypto.randomBytes(32).toString('hex');
+  db.run('INSERT INTO cancellation_tokens (appointment_id, token) VALUES (?, ?)',
+    [appointmentId, token],
+    function(err) {
+      if (err) {
+        console.error('Error creating cancellation token:', err);
+        return callback(null);
+      }
+      callback(token);
+    }
+  );
+  }
+
+  /**
  * Get all appointments (admin only)
  */
 app.get('/api/appointments', authenticateToken, (req, res) => {
@@ -769,10 +928,7 @@ app.get('/api/stats', authenticateToken, (req, res) => {
     `, [today, today], (err, rows) => {
       if (err) {
         console.error('Database error:', err);
-        return res.status(500).json({ 
-          success: false,
-          error: 'Database fout' 
-        });
+        return res.status(500).json({ success: false, error: 'Database fout' });
       }
 
       // Get today's appointments
@@ -782,10 +938,7 @@ app.get('/api/stats', authenticateToken, (req, res) => {
         (err, todayAppointments) => {
           if (err) {
             console.error('Database error:', err);
-            return res.status(500).json({ 
-              success: false,
-              error: 'Database fout' 
-            });
+            return res.status(500).json({ success: false, error: 'Database fout' });
           }
 
           res.json({
@@ -800,17 +953,93 @@ app.get('/api/stats', authenticateToken, (req, res) => {
     });
   } catch (err) {
     console.error('Error:', err);
-    res.status(500).json({ 
-      success: false,
-      error: 'Interne server fout' 
-    });
+    res.status(500).json({ success: false, error: 'Interne server fout' });
   }
 });
+
+// ========== HOME CONTENT ROUTES ==========
+
+/**
+ * GET /api/home-content
+ * Publieke route - haalt alle home page teksten op
+ */
+app.get('/api/home-content', (req, res) => {
+  try {
+    db.all('SELECT section, content FROM home_content', (err, rows) => {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({ success: false, error: 'Home content ophalen mislukt' });
+      }
+      const content = {};
+      if (rows) {
+        rows.forEach(row => {
+          content[row.section] = row.content;
+        });
+      }
+      res.json({ success: true, data: content });
+    });
+  } catch (err) {
+    console.error('Error:', err);
+    res.status(500).json({ success: false, error: 'Interne server fout' });
+  }
+});
+
+/**
+ * PUT /api/admin/home-content
+ * Admin route - update home content for a section
+ */
+app.put('/api/admin/home-content', authenticateToken, (req, res) => {
+  try {
+    const { section, content } = req.body;
+    if (!section) {
+      return res.status(400).json({ success: false, error: 'Section is verplicht' });
+    }
+
+    db.run(
+      'INSERT OR REPLACE INTO home_content (section, content, updated_at) VALUES (?, ?, datetime("now"))',
+      [section, content || ''],
+      function(err) {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ success: false, error: 'Home content opslaan mislukt' });
+        }
+        res.json({ success: true, message: 'Content opgeslagen' });
+      }
+    );
+  } catch (err) {
+    console.error('Error:', err);
+    res.status(500).json({ success: false, error: 'Interne server fout' });
+  }
+});
+
+// ========== FOTO ROUTES (publiek) ==========
+
+/**
+ * GET /api/photos
+ * Publieke route - haalt alle foto's op
+ */
+app.get('/api/photos', (req, res) => {
+  try {
+    db.all('SELECT id, filename, caption, uploaded_at FROM photos ORDER BY uploaded_at DESC', (err, rows) => {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({ success: false, error: 'Fotos ophalen mislukt' });
+      }
+      res.json({ success: true, data: rows || [] });
+    });
+  } catch (err) {
+    console.error('Error:', err);
+    res.status(500).json({ success: false, error: 'Interne server fout' });
+  }
+});
+
+// Serve uploaded photos statically
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // ========== STATIC FILES & FALLBACK ==========
 
 // Mount admin routes
-const adminRouter = createAdminRoutes(db, authenticateToken, servicesMap);
+const adminRouter = createAdminRoutes(db, authenticateToken, servicesMap, invalidateServicesCache);
 app.use('/api/admin', adminRouter);
 
 // Serve static files from the dist folder in production
@@ -847,7 +1076,7 @@ app.use((req, res) => {
 // Voeg reminder_sent kolom toe als die nog niet bestaat
 db.run(`ALTER TABLE appointments ADD COLUMN reminder_sent INTEGER DEFAULT 0`, (err) => {
   if (err && !err.message.includes('duplicate column')) {
-    console.error('âš ï¸ Kon reminder_sent kolom niet toevoegen:', err.message);
+    console.error('⚠️ Kon reminder_sent kolom niet toevoegen:', err.message);
   }
 });
 
@@ -859,32 +1088,35 @@ async function checkAndSendReminders() {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-    console.log(`ðŸ” [Reminder] Checking appointments for ${tomorrowStr}...`);
+    console.log(`🔍 [Reminder 24u] Checking appointments for ${tomorrowStr}...`);
 
     // Find all active appointments for tomorrow that haven't received a reminder yet
     db.all(
-      `SELECT id, name, email, treatment, barber_name, date, time 
-       FROM appointments 
-       WHERE date = ? AND status = 'active' AND email != '' AND email IS NOT NULL AND (reminder_sent IS NULL OR reminder_sent = 0)`,
+      `SELECT a.id, a.name, a.email, a.treatment, a.barber_name, a.date, a.time, ct.token as cancel_token
+       FROM appointments a
+       LEFT JOIN cancellation_tokens ct ON ct.appointment_id = a.id AND ct.used = 0
+       WHERE a.date = ? AND a.status = 'active' AND a.email != '' AND a.email IS NOT NULL AND (a.reminder_sent IS NULL OR a.reminder_sent = 0)`,
       [tomorrowStr],
       async (err, rows) => {
         if (err) {
-          console.error('âŒ [Reminder] Database error:', err.message);
+          console.error('❌ [Reminder 24u] Database error:', err.message);
           return;
         }
 
         if (!rows || rows.length === 0) {
-          console.log(`ðŸ“­ [Reminder] Geen herinneringen te versturen voor ${tomorrowStr}`);
+          console.log(`📭 [Reminder 24u] Geen herinneringen te versturen voor ${tomorrowStr}`);
           return;
         }
 
-        console.log(`ðŸ“§ [Reminder] ${rows.length} herinnering(en) te versturen voor ${tomorrowStr}`);
+        console.log(`📧 [Reminder 24u] ${rows.length} herinnering(en) te versturen voor ${tomorrowStr}`);
 
         for (const appointment of rows) {
           if (!appointment.email) continue;
 
           const serviceName = servicesMap[appointment.treatment] || appointment.treatment;
           const barberDisplay = barberDisplayMap[appointment.barber_name] || appointment.barber_name;
+          const APP_URL = process.env.APP_URL || 'http://localhost:5173';
+          const cancelLink = appointment.cancel_token ? `${APP_URL}/annuleren?token=${appointment.cancel_token}` : '';
 
           const result = await sendReminderEmail({
             email: appointment.email,
@@ -893,15 +1125,16 @@ async function checkAndSendReminders() {
             barber: barberDisplay,
             date: appointment.date,
             time: appointment.time,
+            cancelLink
           });
 
           if (result.success) {
             // Markeer als herinnering verstuurd
             db.run('UPDATE appointments SET reminder_sent = 1 WHERE id = ?', [appointment.id], (updateErr) => {
               if (updateErr) {
-                console.error(`âŒ [Reminder] Kon reminder status niet updaten voor ID ${appointment.id}:`, updateErr.message);
+                console.error(`❌ [Reminder 24u] Kon reminder status niet updaten voor ID ${appointment.id}:`, updateErr.message);
               } else {
-                console.log(`âœ… [Reminder] Reminder gemarkeerd voor ID ${appointment.id}`);
+                console.log(`✅ [Reminder 24u] Reminder gemarkeerd voor ID ${appointment.id}`);
               }
             });
           }
@@ -909,42 +1142,135 @@ async function checkAndSendReminders() {
       }
     );
   } catch (err) {
-    console.error('âŒ [Reminder] Fout:', err.message);
+    console.error('❌ [Reminder 24u] Fout:', err.message);
   }
 }
 
-// Plan de cron job: elke 5 minuten checken (voor testen)
+// ========== 30 MINUTEN REMINDER ==========
+// Stuurt een herinnering 30 minuten voor de afspraak
+
+// Voeg 30min_reminder_sent kolom toe als die nog niet bestaat
+db.run(`ALTER TABLE appointments ADD COLUMN reminder_30min_sent INTEGER DEFAULT 0`, (err) => {
+  if (err && !err.message.includes('duplicate column')) {
+    console.error('⚠️ Kon reminder_30min_sent kolom niet toevoegen:', err.message);
+  }
+});
+
+async function checkAndSend30MinReminders() {
+  try {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    
+    // Bereken huidige tijd + 30 minuten
+    const targetTime = new Date(now.getTime() + 30 * 60 * 1000);
+    const targetHour = targetTime.getHours().toString().padStart(2, '0');
+    const targetMin = targetTime.getMinutes().toString().padStart(2, '0');
+    // Check tussen target-2 min en target+2 min (speelruimte voor de cron)
+    const checkTime = targetHour + ':' + targetMin;
+
+    console.log(`🔍 [Reminder 30min] Checking appointments around ${checkTime} for ${todayStr}...`);
+
+    // Find active appointments today within 2 minutes of the target time
+    db.all(
+      `SELECT a.id, a.name, a.email, a.treatment, a.barber_name, a.date, a.time, ct.token as cancel_token
+       FROM appointments a
+       LEFT JOIN cancellation_tokens ct ON ct.appointment_id = a.id AND ct.used = 0
+       WHERE a.date = ? AND a.status = 'active' AND a.email != '' AND a.email IS NOT NULL 
+       AND (a.reminder_30min_sent IS NULL OR a.reminder_30min_sent = 0)`,
+      [todayStr],
+      async (err, rows) => {
+        if (err) {
+          console.error('❌ [Reminder 30min] Database error:', err.message);
+          return;
+        }
+
+        if (!rows || rows.length === 0) {
+          return; // Geen afspraken vandaag
+        }
+
+        // Filter op tijd: alleen afspraken die binnen ~30 minuten zijn
+        const targetTotalMin = targetTime.getHours() * 60 + targetTime.getMinutes();
+        
+        for (const appointment of rows) {
+          if (!appointment.email) continue;
+          
+          const [h, m] = appointment.time.split(':').map(Number);
+          const apptTotalMin = h * 60 + m;
+          const diff = apptTotalMin - targetTotalMin;
+          
+          // Stuur alleen als de afspraak over ~30 minuten is (binnen 5 minuten marge)
+          if (diff < -2 || diff > 2) continue;
+
+          const serviceName = servicesMap[appointment.treatment] || appointment.treatment;
+          const barberDisplay = barberDisplayMap[appointment.barber_name] || appointment.barber_name;
+          const APP_URL = process.env.APP_URL || 'http://localhost:5173';
+          const cancelLink = appointment.cancel_token ? `${APP_URL}/annuleren?token=${appointment.cancel_token}` : '';
+
+          console.log(`📧 [Reminder 30min] Sturen naar ${appointment.email} voor afspraak om ${appointment.time}`);
+
+          // Gebruik sendReminderEmail met een andere subject voor de 30-min herinnering
+          const result = await sendReminderEmail({
+            email: appointment.email,
+            name: appointment.name,
+            service: serviceName,
+            barber: barberDisplay,
+            date: appointment.date,
+            time: appointment.time,
+            cancelLink
+          });
+
+          if (result.success) {
+            db.run('UPDATE appointments SET reminder_30min_sent = 1 WHERE id = ?', [appointment.id], (updateErr) => {
+              if (updateErr) {
+                console.error(`❌ [Reminder 30min] Kon status niet updaten voor ID ${appointment.id}:`, updateErr.message);
+              } else {
+                console.log(`✅ [Reminder 30min] Verstuurd voor ID ${appointment.id}`);
+              }
+            });
+          }
+        }
+      }
+    );
+  } catch (err) {
+    console.error('❌ [Reminder 30min] Fout:', err.message);
+  }
+}
+
+// Plan de cron job: elke 5 minuten checken (voor 24u en 30min reminders)
 // In productie: elke 30 minuten of elk uur
 // Cron expressie: '*/5 * * * *' = elke 5 minuten
 //                 '0 * * * *'   = elk uur
 //                 '0 */6 * * *' = elke 6 uur
 const REMINDER_CRON_SCHEDULE = process.env.REMINDER_CRON_SCHEDULE || '*/30 * * * *';
 
-// Start reminder cron job
+// Start reminder cron jobs
 let reminderJob = null;
 try {
   reminderJob = cron.schedule(REMINDER_CRON_SCHEDULE, () => {
     checkAndSendReminders();
+    checkAndSend30MinReminders();
   });
-  console.log(`â° Reminder cron job gestart: "${REMINDER_CRON_SCHEDULE}"`);
+  console.log(`⏰ Reminder cron job gestart: "${REMINDER_CRON_SCHEDULE}"`);
+  console.log(`   - 24u herinnering (morgen)`);
+  console.log(`   - 30min herinnering (vandaag)`);
 } catch (err) {
-  console.error('âŒ Kon cron job niet starten:', err.message);
+  console.error('❌ Kon cron job niet starten:', err.message);
 }
 
 // ========== START SERVER ==========
 
 app.listen(PORT, () => {
   console.log('');
-  console.log('ðŸš€ Barbershop Mo&Ma Server');
-  console.log('â”'.repeat(50));
-  console.log(`âœ… Server draait op http://localhost:${PORT}`);
-  console.log(`ðŸ“ API: http://localhost:${PORT}/api`);
-  console.log(`ðŸ“… Afspraken: POST/GET /api/appointments`);
-  console.log(`ðŸ” Admin login: POST /api/auth/login`);
-  console.log(`ðŸ“Š Stats: GET /api/stats`);
-  console.log(`ðŸ“§ Email bevestigingen: âœ… actief`);
-  console.log(`â° Reminders: âœ… actief (elke 30 min)`);
-  console.log('â”'.repeat(50));
+  console.log('🚀 Barbershop Mo&Ma Server');
+  console.log('━'.repeat(50));
+  console.log(`✅ Server draait op http://localhost:${PORT}`);
+  console.log(`📍 API: http://localhost:${PORT}/api`);
+  console.log(`📅 Afspraken: POST/GET /api/appointments`);
+  console.log(`🔐 Admin login: POST /api/auth/login`);
+  console.log(`📊 Stats: GET /api/stats`);
+  console.log(`📧 Email bevestigingen: ✅ actief`);
+  console.log(`⏰ Reminders: ✅ actief (elke 30 min)`);
+  console.log('━'.repeat(50));
   console.log('');
 
   // Verifieer email configuratie bij opstart
@@ -952,3 +1278,5 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+
+

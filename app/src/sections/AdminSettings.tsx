@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, Plus, X, Save, Trash2, Calendar } from 'lucide-react';
+import { toast } from 'sonner';
 import { BarberManagement } from './BarberManagement';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -72,27 +73,39 @@ export function AdminSettings() {
 
   // === SERVICES ===
 
-  const saveService = async (service: Service) => {
+        const saveService = async (service: Service) => {
     setIsSaving(true);
     try {
-      if (service.key && service.key !== '_new') {
-        await fetch(`${API_URL}/admin/services/${service.key}`, {
+      // Check of deze service al bestaat in de opgehaalde lijst
+      const isExisting = services.some(s => s.key === service.key);
+      if (isExisting) {
+        const res = await fetch(`${API_URL}/admin/services/${service.key}`, {
           method: 'PUT',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify(service),
         });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Update mislukt');
+        }
       } else {
-        await fetch(`${API_URL}/admin/services`, {
+        const res = await fetch(`${API_URL}/admin/services`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...service, key: service.key === '_new' ? '' : service.key }),
+          body: JSON.stringify(service),
         });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Aanmaken mislukt');
+        }
       }
       await loadData();
       setShowServiceDialog(false);
       setEditingService(null);
+      toast.success('Dienst opgeslagen!');
     } catch (err) {
       console.error(err);
+      toast.error('Fout bij opslaan: ' + (err instanceof Error ? err.message : 'Onbekende fout'));
     } finally {
       setIsSaving(false);
     }
@@ -202,7 +215,7 @@ export function AdminSettings() {
                         <td className="py-3 pr-4 font-medium">{s.name}</td>
                         <td className="py-3 pr-4">{s.duration}</td>
                         <td className="py-3 pr-4">&euro; {s.price}</td>
-                        <td className="py-3 pr-4">{s.is_active ? 'âœ…' : 'âŒ'}</td>
+                        <td className="py-3 pr-4">{s.is_active ? 'Actief' : 'Inactief'}</td>
                         <td className="py-3">
                           <div className="flex gap-2">
                             <Button variant="outline" size="sm" onClick={() => { setEditingService(s); setShowServiceDialog(true); }}>
@@ -327,8 +340,8 @@ export function AdminSettings() {
           {editingService && (
             <div className="space-y-4 py-4">
               <div>
-                <Label>Key (unieke code)</Label>
-                <Input value={editingService.key || ''} disabled={!!editingService.key && editingService.key !== '_new'}
+                                <Label>Key (unieke code)</Label>
+                <Input value={editingService.key || ''} disabled={services.some(s => s.key === editingService.key) && editingService.key !== ''}
                   onChange={(e) => setEditingService({ ...editingService, key: e.target.value })} placeholder="bijv. knippen-stylen" />
               </div>
               <div>
@@ -391,17 +404,24 @@ function HomeContentEditor() {
     }
   };
 
-  const saveSection = async (section: string) => {
+    const saveSection = async (section: string) => {
     setSaving(section);
     try {
-      await fetch(`${API_URL}/admin/home-content`, {
+      const res = await fetch(`${API_URL}/admin/home-content`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ section, content: content[section] || '' }),
       });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Opgeslagen!');
+      } else {
+        toast.error('Fout bij opslaan');
+      }
       await fetchContent();
     } catch (err) {
       console.error(err);
+      toast.error('Fout bij opslaan');
     } finally {
       setSaving(null);
     }

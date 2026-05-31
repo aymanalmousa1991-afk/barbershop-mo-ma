@@ -82,7 +82,7 @@ function createTransporter() {
   };
 }
 
-function confirmationHTML({ name, service, barber, date, time, price, notes }) {
+function confirmationHTML({ name, service, barber, date, time, price, notes, cancelLink }) {
   return '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>'
     + 'body{font-family:Helvetica,Arial,sans-serif;background:#f4f4f4;margin:0;padding:0}'
     + '.c{max-width:600px;margin:0 auto;background:#fff}'
@@ -101,6 +101,7 @@ function confirmationHTML({ name, service, barber, date, time, price, notes }) {
     + '.ib{background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:15px;margin-bottom:25px}'
     + '.ib p{margin:5px 0;color:#856404;font-size:13px}'
     + '.btn{display:block;background:#6b0f1a;color:#fff;text-decoration:none;padding:14px;border-radius:8px;text-align:center;font-weight:600;margin:25px 0}'
+    + '.cancel-btn{display:block;background:#dc3545;color:#fff;text-decoration:none;padding:12px;border-radius:8px;text-align:center;font-weight:600;margin:15px 0;font-size:14px}'
     + '.f{background:#f8f8f8;padding:25px 30px;text-align:center;font-size:12px;color:#999}'
     + '</style></head><body><div class="c">'
     + '<div class="h"><h1>Mo&amp;Ma</h1><p>Kapsalon &amp; Barbershop</p></div>'
@@ -122,13 +123,14 @@ function confirmationHTML({ name, service, barber, date, time, price, notes }) {
     + '<p>&#9200; Ma-Za 08:00-18:00</p>'
     + '</div>'
     + '<p style="text-align:center;color:#888;font-size:14px;">Afspraak wijzigen? Bel <a href="tel:' + SHOP_PHONE + '" style="color:#6b0f1a;">' + SHOP_PHONE + '</a></p>'
+    + (cancelLink ? '<a href="' + cancelLink + '" class="cancel-btn">&#10060; Afspraak annuleren</a>' : '')
     + '<a href="' + SHOP_WEBSITE + '" class="btn">Bezoek website</a>'
     + '</div>'
     + '<div class="f"><p><strong>Mo&amp;Ma Kapsalon</strong></p><p>' + SHOP_ADDRESS + ' &middot; ' + SHOP_PHONE + '</p><p><a href="' + SHOP_WEBSITE + '">' + SHOP_WEBSITE + '</a></p></div>'
     + '</div></body></html>';
 }
 
-function reminderHTML({ name, service, barber, date, time }) {
+function reminderHTML({ name, service, barber, date, time, cancelLink }) {
   return '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>'
     + 'body{font-family:Helvetica,Arial,sans-serif;background:#f4f4f4;margin:0;padding:0}'
     + '.c{max-width:600px;margin:0 auto;background:#fff}'
@@ -145,6 +147,7 @@ function reminderHTML({ name, service, barber, date, time }) {
     + '.dv{color:#1a1a1a;font-weight:600;font-size:14px;text-align:right}'
     + '.ib{background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:15px;margin-bottom:25px}'
     + '.ib p{margin:5px 0;color:#1565c0;font-size:13px}'
+    + '.cancel-btn{display:block;background:#dc3545;color:#fff;text-decoration:none;padding:12px;border-radius:8px;text-align:center;font-weight:600;margin:15px 0;font-size:14px}'
     + '.btn{display:block;background:#d4af37;color:#1a1a1a;text-decoration:none;padding:14px;border-radius:8px;text-align:center;font-weight:600;margin:25px 0}'
     + '.f{background:#f8f8f8;padding:25px 30px;text-align:center;font-size:12px;color:#999}'
     + '</style></head><body><div class="c">'
@@ -160,20 +163,21 @@ function reminderHTML({ name, service, barber, date, time }) {
     + '<div class="dr"><span class="dl">Tijd</span><span class="dv">' + time + '</span></div>'
     + '</div>'
     + '<div class="ib"><p>&#128205; ' + SHOP_ADDRESS + '</p><p>&#128222; ' + SHOP_PHONE + '</p></div>'
+    + (cancelLink ? '<a href="' + cancelLink + '" class="cancel-btn">&#10060; Afspraak annuleren</a>' : '')
     + '<a href="' + SHOP_WEBSITE + '" class="btn">Website</a>'
     + '</div>'
     + '<div class="f"><p><strong>Mo&amp;Ma Kapsalon</strong></p><p>' + SHOP_ADDRESS + ' &middot; ' + SHOP_PHONE + '</p></div>'
     + '</div></body></html>';
 }
 
-async function sendConfirmationEmail({ email, name, service, barber, date, time, price, notes }) {
+async function sendConfirmationEmail({ email, name, service, barber, date, time, price, notes, cancelLink }) {
   if (!email) { console.log('Geen email'); return { success: false }; }
   try {
     const t = createTransporter();
     const info = await t.sendMail({
       to: email,
       subject: 'Afspraak bevestigd - Mo&Ma Kapsalon - ' + date + ' om ' + time,
-      html: confirmationHTML({ name, service, barber, date, time, price, notes }),
+      html: confirmationHTML({ name, service, barber, date, time, price, notes, cancelLink }),
     });
     console.log('Mail naar ' + email + ' (' + info.messageId + ')');
     return { success: true, messageId: info.messageId };
@@ -183,14 +187,14 @@ async function sendConfirmationEmail({ email, name, service, barber, date, time,
   }
 }
 
-async function sendReminderEmail({ email, name, service, barber, date, time }) {
+async function sendReminderEmail({ email, name, service, barber, date, time, cancelLink }) {
   if (!email) return { success: false };
   try {
     const t = createTransporter();
     const info = await t.sendMail({
       to: email,
       subject: 'Herinnering: morgen ' + time + ' bij Mo&Ma Kapsalon!',
-      html: reminderHTML({ name, service, barber, date, time }),
+      html: reminderHTML({ name, service, barber, date, time, cancelLink }),
     });
     console.log('Reminder naar ' + email + ' (' + info.messageId + ')');
     return { success: true, messageId: info.messageId };

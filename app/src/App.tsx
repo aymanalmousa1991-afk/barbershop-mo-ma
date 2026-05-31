@@ -9,6 +9,7 @@ import { AdminDashboard } from '@/sections/AdminDashboard';
 import { Footer } from '@/sections/Footer';
 import { AboutPage } from '@/sections/AboutPage';
 import { PhotoGallery } from '@/sections/PhotoGallery';
+import { CancelAppointment } from '@/sections/CancelAppointment';
 import { Toaster } from '@/components/ui/sonner';
 
 function AppContent() {
@@ -16,6 +17,10 @@ function AppContent() {
     // Check URL parameter voor directe navigatie
     const params = new URLSearchParams(window.location.search);
     const page = params.get('page');
+    // Check of we op /annuleren zijn (via window.location)
+    if (window.location.pathname.startsWith('/annuleren')) {
+      return 'cancel';
+    }
     return page || 'home';
   });
   const { isAuthenticated } = useAuth();
@@ -42,6 +47,8 @@ function AppContent() {
         return <Services onNavigate={handleNavigate} />;
       case 'booking':
         return <Booking />;
+      case 'cancel':
+        return <CancelAppointment />;
       case 'admin':
       case 'admin-dashboard':
         if (isAuthenticated) {

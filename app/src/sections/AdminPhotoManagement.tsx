@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Upload, Trash2, X } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
+const UPLOADS_URL = import.meta.env.VITE_UPLOADS_URL || 'http://localhost:3001/uploads/';
 
 interface Photo { id: number; filename: string; caption: string; uploaded_at: string; }
 
@@ -70,7 +71,7 @@ export function AdminPhotoManagement() {
               <div className="grid grid-cols-2 gap-3 max-h-96 overflow-y-auto">
                 {photos.map((photo) => (
                   <div key={photo.id} className="relative group aspect-square rounded-lg overflow-hidden shadow">
-                    <img src={API_URL + "/uploads/photos/" + photo.filename} alt={photo.caption || "Foto"} className="w-full h-full object-cover" />
+                    <img src={UPLOADS_URL + "photos/" + photo.filename} alt={photo.caption || "Foto"} className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                       <Button variant="destructive" size="sm" onClick={() => handleDelete(photo.id)}><Trash2 className="h-4 w-4" /></Button>
                     </div>

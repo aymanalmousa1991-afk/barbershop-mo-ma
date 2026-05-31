@@ -27,11 +27,18 @@ interface AdminDashboardProps {
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
-interface ServiceOption {
-  key: string;
-  name: string;
-  duration: number;
-}
+const serviceNames: Record<string, string> = {
+  'knippen-stylen': 'Knippen + stylen',
+  'knippen-baard': 'Knippen + baard',
+  'senioren': 'Senioren 65+',
+  'tondeuse': 'Tondeuse/kaal',
+  'baard': 'Baard verzorging',
+  'baard-nek': 'Baard + nek',
+  'jong-tm11': 'Jongens t/m 11',
+  'jong-12-13': 'Jongens 12-13',
+};
+
+const serviceOptions = Object.keys(serviceNames).map(k => ({ key: k, name: serviceNames[k] }));
 
 const barberColors: Record<string, { bg: string; text: string; border: string; light: string }> = {
   'mo': { bg: 'bg-blue-600', text: 'text-blue-600', border: 'border-blue-600', light: 'bg-blue-50 border-blue-200' },
@@ -43,6 +50,11 @@ const defaultBarberColor = { bg: 'bg-stone-600', text: 'text-stone-600', border:
 
 function getBarberColor(barberName: string) {
   return barberColors[barberName?.toLowerCase()] || defaultBarberColor;
+}
+
+function getBarberDisplayName(barberName: string) {
+  const names: Record<string, string> = { 'mo': 'Mo', 'ma': 'Ma', 'third': 'Derde kapper' };
+  return names[barberName?.toLowerCase()] || barberName;
 }
 
 const timeSlots = [
@@ -57,6 +69,12 @@ const timeSlots = [
   '16:00','16:15','16:30','16:45',
   '17:00','17:15','17:30','17:45'
 ];
+
+const serviceDurations: Record<string, number> = {
+  'knippen-stylen': 30, 'knippen-baard': 45, 'senioren': 30,
+  'tondeuse': 20, 'baard': 15, 'baard-nek': 25, 'jong-tm11': 25, 'jong-12-13': 30,
+  'wassen': 10,
+};
 
 export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   const { logout, user } = useAuth();
@@ -76,34 +94,9 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   const [moveDate, setMoveDate] = useState('');
   const [moveTime, setMoveTime] = useState('');
   const [isMoving, setIsMoving] = useState(false);
-    const [barbersAgenda, setBarbersAgenda] = useState<{key:string;name:string;color:{bg:string;text:string;border:string;light:string}}[]>([]);
+  const [barbersAgenda, setBarbersAgenda] = useState<{key:string;name:string;color:{bg:string;text:string;border:string;light:string}}[]>([]);
   const [barberFilter, setBarberFilter] = useState<string>("");
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
-  const [services, setServices] = useState<ServiceOption[]>([]);
-  const [serviceMap, setServiceMap] = useState<Record<string, ServiceOption>>({});
-
-  // Helper: laad diensten uit API
-  const fetchServices = async () => {
-    try {
-      const res = await fetch(`${API_URL}/services`);
-      const data = await res.json();
-      if (data.success && data.data) {
-        const mapped = data.data.map((s: any) => ({ key: s.key, name: s.name, duration: s.duration }));
-        setServices(mapped);
-        const map: Record<string, ServiceOption> = {};
-        mapped.forEach((s: ServiceOption) => { map[s.key] = s; });
-        setServiceMap(map);
-      }
-    } catch (err) {
-      console.error('Error fetching services:', err);
-    }
-  };
-
-  // Helper functie voor kapper weergave - gebruikt de dynamische barbersAgenda
-  const getBarberDisplayName = (barberName: string) => {
-    const barber = barbersAgenda.find(b => b.key === barberName?.toLowerCase());
-    return barber?.name || barberName;
-  };
 
   // Nieuwe afspraak toevoegen
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -151,7 +144,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     }
   };
 
-  useEffect(() => { fetchData(); fetchBarbers(); fetchServices(); }, []);
+  useEffect(() => { fetchData(); fetchBarbers(); }, []);
 
   const handleDelete = async () => {
     if (!appointmentToDelete) return;
@@ -368,9 +361,9 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                     <Button variant="outline" size="sm" onClick={() => setAddDialogOpen(true)} className="gap-2 border-[#6b0f1a] text-[#6b0f1a] hover:bg-[#6b0f1a] hover:text-white">
                       <Plus className="h-4 w-4" />Nieuwe Afspraak
                     </Button>
-                                        <select className="p-2 border rounded text-sm bg-white" value={barberFilter} onChange={(e) => setBarberFilter(e.target.value)}>
+                    <select className="p-2 border rounded text-sm bg-white" value={barberFilter} onChange={(e) => setBarberFilter(e.target.value)}>
                       <option value="">Alle kappers</option>
-                      {barbersAgenda.map(b => <option key={b.key} value={b.key}>{b.name}</option>)}
+                      <option value="mo">Mo</option><option value="ma">Ma</option><option value="third">Derde kapper</option>
                     </select>
                   </div>
                   <Button variant="ghost" onClick={handlePrevDay} className="text-[#6b0f1a] hover:bg-[#6b0f1a]/10">
@@ -413,8 +406,8 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                                                     <div className="space-y-0.5">
                             {(() => {
                               const occupiedBy: Record<string, Appointment> = {};
-                                                            barberAppointments.forEach(apt => {
-                                const dur = serviceMap[apt.service]?.duration || 30;
+                              barberAppointments.forEach(apt => {
+                                const dur = serviceDurations[apt.service] || 30;
                                 const [sh, sm] = apt.time.split(":").map(Number);
                                 const startMin = sh * 60 + sm;
                                 const endMin = startMin + dur;
@@ -440,7 +433,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                                       {apt ? (
                                         <div className="group relative">
                                           <p className={`text-sm font-semibold ${color.text} truncate`}>{apt.name}</p>
-                                          <p className="text-xs text-stone-500 truncate">{serviceMap[apt.service]?.name || apt.service} - {serviceMap[apt.service]?.duration || 30} min</p>
+                                          <p className="text-xs text-stone-500 truncate">{serviceNames[apt.service] || apt.service} - {serviceDurations[apt.service] || 30} min</p>
                                           {apt.notes && <p className="text-xs text-stone-400 truncate">{apt.notes}</p>}
                                           <div className="absolute -top-1 -right-1 flex gap-0.5">
                                             <button onClick={() => { setAppointmentToMove(apt); setMoveDate(apt.date); setMoveTime(apt.time); setMoveDialogOpen(true); }} 
@@ -487,25 +480,25 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                     </TabsList>
                     <TabsContent value="all">
                       <div className="space-y-4">
-                                                {appointments.map(a => <AppointmentListItem key={a.id} appointment={a} serviceMap={serviceMap} barbersAgenda={barbersAgenda} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDialogOpen(true); }} />)}
+                        {appointments.map(a => <AppointmentListItem key={a.id} appointment={a} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDialogOpen(true); }} />)}
                         {appointments.length === 0 && <EmptyState />}
                       </div>
                     </TabsContent>
                     <TabsContent value="today">
                       <div className="space-y-4">
-                        {appointments.filter(a => a.date === new Date().toISOString().split('T')[0]).map(a => <AppointmentListItem key={a.id} appointment={a} serviceMap={serviceMap} barbersAgenda={barbersAgenda} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDialogOpen(true); }} />)}
+                        {appointments.filter(a => a.date === new Date().toISOString().split('T')[0]).map(a => <AppointmentListItem key={a.id} appointment={a} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDialogOpen(true); }} />)}
                         {appointments.filter(a => a.date === new Date().toISOString().split('T')[0]).length === 0 && <EmptyState text="Geen afspraken voor vandaag" />}
                       </div>
                     </TabsContent>
                     <TabsContent value="upcoming">
                       <div className="space-y-4">
-                        {appointments.filter(a => a.date >= new Date().toISOString().split('T')[0]).map(a => <AppointmentListItem key={a.id} appointment={a} serviceMap={serviceMap} barbersAgenda={barbersAgenda} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDialogOpen(true); }} />)}
+                        {appointments.filter(a => a.date >= new Date().toISOString().split('T')[0]).map(a => <AppointmentListItem key={a.id} appointment={a} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDialogOpen(true); }} />)}
                         {appointments.filter(a => a.date >= new Date().toISOString().split('T')[0]).length === 0 && <EmptyState text="Geen aankomende afspraken" />}
                       </div>
                     </TabsContent>
                     <TabsContent value="past">
                       <div className="space-y-4">
-                        {appointments.filter(a => a.date < new Date().toISOString().split('T')[0]).map(a => <AppointmentListItem key={a.id} appointment={a} serviceMap={serviceMap} barbersAgenda={barbersAgenda} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDialogOpen(true); }} />)}
+                        {appointments.filter(a => a.date < new Date().toISOString().split('T')[0]).map(a => <AppointmentListItem key={a.id} appointment={a} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDialogOpen(true); }} />)}
                         {appointments.filter(a => a.date < new Date().toISOString().split('T')[0]).length === 0 && <EmptyState text="Geen verlopen afspraken" />}
                       </div>
                     </TabsContent>
@@ -565,10 +558,10 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-1">
-                                <Label>Kapper</Label>
+                <Label>Kapper</Label>
                 <select className="w-full mt-1 p-2 border rounded text-sm" value={moveTargetBarber} onChange={(e) => setMoveTargetBarber(e.target.value)}>
                   <option value="">Kies...</option>
-                  {barbersAgenda.map(b => <option key={b.key} value={b.key}>{b.name}</option>)}
+                  <option value="mo">Mo</option><option value="ma">Ma</option><option value="third">Derde kapper</option>
                 </select>
               </div>
               <div>
@@ -592,22 +585,18 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-            {/* Add Appointment Dialog */}
-            <AddAppointmentDialog
+      {/* Add Appointment Dialog */}
+      <AddAppointmentDialog
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         barber={addBarber}
         setBarber={setAddBarber}
-        date={selectedDate}
-        setDate={setSelectedDate}
         time={addTime}
         setTime={setAddTime}
         formData={newAppointment}
         setFormData={setNewAppointment}
         onSave={handleAddAppointment}
         isAdding={isAdding}
-        services={services}
-        barbersList={barbersAgenda.map(b => ({ key: b.key, name: b.name }))}
       />
 
       {/* Password Change Dialog */}
@@ -627,18 +616,15 @@ function EmptyState({ text = "Geen afspraken gevonden" }: { text?: string }) {
 
 
 function AddAppointmentDialog({
-  open, onOpenChange, barber, setBarber, date, setDate, time, setTime,
-  formData, setFormData, onSave, isAdding, services, barbersList
+  open, onOpenChange, barber, setBarber, time, setTime,
+  formData, setFormData, onSave, isAdding
 }: {
   open: boolean; onOpenChange: (v: boolean) => void;
   barber: string; setBarber: (v: string) => void;
-  date: string; setDate: (v: string) => void;
   time: string; setTime: (v: string) => void;
   formData: { name: string; email: string; phone: string; service: string; notes: string };
   setFormData: (v: any) => void;
   onSave: () => void; isAdding: boolean;
-  services: ServiceOption[];
-  barbersList: {key: string; name: string}[];
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -650,30 +636,18 @@ function AddAppointmentDialog({
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-4">
             <div>
-                <Label>Kapper</Label>
+        <Label>Kapper</Label>
         <select className="w-full mt-1 p-2 border rounded" value={barber} onChange={(e) => setBarber(e.target.value)}>
           <option value="">Kies kapper...</option>
-          {barbersList.map(b => <option key={b.key} value={b.key}>{b.name}</option>)}
+          <option value="mo">Mo</option><option value="ma">Ma</option><option value="third">Derde kapper</option>
         </select>
             </div>
-            <div>
-              <Label>Datum</Label>
-              <Input type="date" className="mt-1" value={date} onChange={(e) => setDate(e.target.value)} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
             <div>
         <Label>Tijd</Label>
         <select className="w-full mt-1 p-2 border rounded" value={time} onChange={(e) => setTime(e.target.value)}>
           <option value="">Kies tijd...</option>
           {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
-            </div>
-            <div>
-              <Label>Behandeling</Label>
-              <select className="w-full mt-1 p-2 border rounded" value={formData.service} onChange={(e) => setFormData({...formData, service: e.target.value})}>
-                {services.map(s => <option key={s.key} value={s.key}>{s.name}</option>)}
-              </select>
             </div>
           </div>
           <div>
@@ -691,13 +665,19 @@ function AddAppointmentDialog({
             </div>
           </div>
           <div>
+            <Label>Behandeling</Label>
+            <select className="w-full mt-1 p-2 border rounded" value={formData.service} onChange={(e) => setFormData({...formData, service: e.target.value})}>
+        {serviceOptions.map(s => <option key={s.key} value={s.key}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
             <Label>Notities</Label>
             <Textarea value={formData.notes} onChange={(e) => setFormData({...formData, notes: e.target.value})} placeholder="Eventuele notities..." rows={2} />
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isAdding}>Annuleren</Button>
-          <Button onClick={onSave} disabled={!barber || !date || !time || !formData.name || isAdding} className="bg-[#6b0f1a]">
+          <Button onClick={onSave} disabled={!barber || !time || !formData.name || isAdding} className="bg-[#6b0f1a]">
             {isAdding ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Bezig...</> : "Toevoegen"}
           </Button>
         </DialogFooter>
@@ -706,19 +686,18 @@ function AddAppointmentDialog({
   );
 }
 
-function AppointmentListItem({ appointment, onDelete, onMove, serviceMap, barbersAgenda }: { appointment: Appointment; onDelete: () => void; onMove: () => void; serviceMap: Record<string, ServiceOption>; barbersAgenda: {key:string;name:string}[]; }) {
+function AppointmentListItem({ appointment, onDelete, onMove }: { appointment: Appointment; onDelete: () => void; onMove: () => void }) {
   const color = getBarberColor(appointment.barber_name || '');
   const statusLabel = isToday(parseISO(appointment.date)) ? 'Vandaag' 
     : isFuture(parseISO(appointment.date)) ? 'Aankomend' : 'Verlopen';
-  const barberName = barbersAgenda.find(b => b.key === appointment.barber_name?.toLowerCase())?.name || appointment.barber_name || '';
 
   return (
     <div className={`flex flex-col lg:flex-row lg:items-center justify-between p-4 rounded-lg transition-shadow ${color.light}`}>
       <div className="flex-1 space-y-2">
         <div className="flex items-center gap-3 flex-wrap">
           <h3 className="font-semibold text-[#1a1a1a]">{appointment.name}</h3>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${color.bg} text-white`}>
-            {barberName}
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${color.bg} text-white`}>
+            {getBarberDisplayName(appointment.barber_name || '')}
           </span>
           <span className={`text-xs px-2 py-0.5 rounded-full ${
             statusLabel === 'Vandaag' ? 'bg-[#6b0f1a] text-white' 
@@ -726,7 +705,7 @@ function AppointmentListItem({ appointment, onDelete, onMove, serviceMap, barber
           }`}>{statusLabel}</span>
         </div>
         <div className="flex flex-wrap gap-4 text-sm text-stone-600">
-          <span className="flex items-center gap-1"><Scissors className="h-4 w-4 text-[#6b0f1a]" />{serviceMap[appointment.service]?.name || appointment.service}</span>
+          <span className="flex items-center gap-1"><Scissors className="h-4 w-4 text-[#6b0f1a]" />{serviceNames[appointment.service] || appointment.service}</span>
           <span className="flex items-center gap-1"><Calendar className="h-4 w-4 text-[#6b0f1a]" />{format(parseISO(appointment.date), 'EEEE d MMMM', { locale: nl })}</span>
           <span className="flex items-center gap-1"><Clock className="h-4 w-4 text-[#6b0f1a]" />{appointment.time}</span>
         </div>
@@ -747,3 +726,4 @@ function AppointmentListItem({ appointment, onDelete, onMove, serviceMap, barber
     </div>
   );
 }
+
