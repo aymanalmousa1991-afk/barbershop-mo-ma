@@ -2,8 +2,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
-const DATA_DIR = process.env.FLY_VM ? '/app/data' : __dirname;
-const dbPath = path.join(DATA_DIR, 'database.sqlite');
+const dbPath = path.join(__dirname, 'database.sqlite');
 const db = new sqlite3.Database(dbPath);
 
 // Enable WAL mode for better performance

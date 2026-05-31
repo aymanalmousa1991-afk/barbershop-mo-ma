@@ -1,4 +1,7 @@
 ﻿User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /api/
 
-Sitemap: https://barbershop-mo-ma.onrender.com/sitemap.xml
+Sitemap: https://barbershop-mo-ma.nl/sitemap.xml
+

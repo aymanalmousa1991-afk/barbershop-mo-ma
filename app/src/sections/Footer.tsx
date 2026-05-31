@@ -98,13 +98,21 @@ export function Footer({ onNavigate }: FooterProps) {
                 </button>
               </li>
                             <li>
-                <button 
-                  onClick={() => onNavigate('booking')}
-                  className="hover:text-[#d4af37] transition-colors"
-                >
-                  Afspraak Maken
-                </button>
-              </li>
+                              <button 
+                                onClick={() => onNavigate('booking')}
+                                className="hover:text-[#d4af37] transition-colors"
+                              >
+                                Afspraak Maken
+                              </button>
+                            </li>
+                            <li>
+                              <button 
+                                onClick={() => onNavigate('privacy')}
+                                className="hover:text-[#d4af37] transition-colors"
+                              >
+                                Privacy &amp; Cookies
+                              </button>
+                            </li>
               {isAuthenticated && (
               <li>
                 <button 

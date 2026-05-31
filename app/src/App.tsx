@@ -10,6 +10,8 @@ import { Footer } from '@/sections/Footer';
 import { AboutPage } from '@/sections/AboutPage';
 import { PhotoGallery } from '@/sections/PhotoGallery';
 import { CancelAppointment } from '@/sections/CancelAppointment';
+import { PrivacyPage } from '@/sections/PrivacyPage';
+import { CookieConsent } from '@/components/CookieConsent';
 import { Toaster } from '@/components/ui/sonner';
 
 function AppContent() {
@@ -49,6 +51,8 @@ function AppContent() {
         return <Booking />;
       case 'cancel':
         return <CancelAppointment />;
+      case 'privacy':
+        return <PrivacyPage onNavigate={handleNavigate} />;
       case 'admin':
       case 'admin-dashboard':
         if (isAuthenticated) {
@@ -66,7 +70,6 @@ function AppContent() {
   };
 
   const showFooter = !['admin', 'admin-dashboard', 'photos'].includes(currentPage);
-
   return (
     <div className="min-h-screen bg-[#faf9f7] flex flex-col">
       <Navbar onNavigate={handleNavigate} currentPage={currentPage} />
@@ -74,6 +77,7 @@ function AppContent() {
         {renderPage()}
       </main>
       {showFooter && <Footer onNavigate={handleNavigate} />}
+      <CookieConsent onNavigate={handleNavigate} />
       <Toaster />
     </div>
   );
@@ -88,3 +92,4 @@ function App() {
 }
 
 export default App;
+
