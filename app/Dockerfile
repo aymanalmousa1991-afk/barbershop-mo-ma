@@ -21,6 +21,7 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/server ./server
 
 RUN mkdir -p /app/uploads/photos
+RUN mkdir -p /app/uploads/hero
 
 EXPOSE 3001
 
