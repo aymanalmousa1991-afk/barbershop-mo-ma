@@ -19,7 +19,9 @@ export function Hero({ onNavigate }: HeroProps) {
         const res = await fetch(`${API_URL}/hero-image`);
         const data = await res.json();
         if (data.success && data.data?.url) {
-          setHeroImage(data.data.url);
+          // Cache-busting: voeg updated_at timestamp toe
+          const ts = data.data.updated_at ? `?t=${Date.parse(data.data.updated_at)}` : `?t=${Date.now()}`;
+          setHeroImage(`${data.data.url}${ts}`);
         }
       } catch (err) {
         console.error('Error fetching hero image:', err);

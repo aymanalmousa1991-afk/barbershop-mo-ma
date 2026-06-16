@@ -1168,7 +1168,7 @@ app.post('/api/admin/upload-hero', authenticateToken, heroUpload.single('hero'),
           console.error('Database error:', err);
           return res.status(500).json({ success: false, error: 'Opslaan mislukt' });
         }
-        res.json({ success: true, message: 'Hero foto bijgewerkt!', data: { url: heroUrl } });
+        res.json({ success: true, message: 'Hero foto bijgewerkt!', data: { url: heroUrl, updated_at: new Date().toISOString() } });
       }
     );
   } catch (err) {
@@ -1183,13 +1183,13 @@ app.post('/api/admin/upload-hero', authenticateToken, heroUpload.single('hero'),
  */
 app.get('/api/hero-image', (req, res) => {
   try {
-    db.get("SELECT content FROM home_content WHERE section = 'hero_image'", (err, row) => {
+    db.get("SELECT content, updated_at FROM home_content WHERE section = 'hero_image'", (err, row) => {
       if (err) {
         return res.status(500).json({ success: false, error: 'Fout bij ophalen' });
       }
       res.json({
         success: true,
-        data: { url: row?.content || null }
+        data: { url: row?.content || null, updated_at: row?.updated_at || null }
       });
     });
   } catch (err) {

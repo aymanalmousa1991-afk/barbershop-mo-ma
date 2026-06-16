@@ -410,9 +410,10 @@ function HomeContentEditor() {
       ]);
       const data = await contentRes.json();
       if (data.success) setContent(data.data || {});
-      const heroData = await heroRes.json();
+            const heroData = await heroRes.json();
       if (heroData.success && heroData.data?.url) {
-        setHeroPreview(heroData.data.url);
+        const ts = heroData.data.updated_at ? `?t=${Date.parse(heroData.data.updated_at)}` : `?t=${Date.now()}`;
+        setHeroPreview(`${heroData.data.url}${ts}`);
       }
     } catch (err) {
       console.error(err);
@@ -458,8 +459,9 @@ function HomeContentEditor() {
         body: formData,
       });
       const data = await res.json();
-      if (data.success) {
-        setHeroPreview(data.data.url);
+            if (data.success) {
+        const ts = data.data.updated_at ? `?t=${Date.parse(data.data.updated_at)}` : `?t=${Date.now()}`;
+        setHeroPreview(`${data.data.url}${ts}`);
         toast.success('Hero foto bijgewerkt!');
       } else {
         toast.error(data.error || 'Upload mislukt');
