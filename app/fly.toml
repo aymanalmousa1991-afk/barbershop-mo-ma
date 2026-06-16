@@ -8,6 +8,7 @@ primary_region = 'ams'
 
 [build]
   dockerfile = 'Dockerfile'
+  docker_build_context = '.'
 
 [env]
   NODE_ENV = 'production'
