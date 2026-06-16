@@ -74,7 +74,7 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3001,https://barbershop-mo-ma.pages.dev').split(',').map(s => s.trim());
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3001,https://barbershop-mo-ma.pages.dev,https://barbershopmoma.nl,https://www.barbershopmoma.nl').split(',').map(s => s.trim());
 const corsOptions = {
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
