@@ -103,7 +103,7 @@ db.serialize(() => {
     uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
-  // Cancellation tokens table
+    // Cancellation tokens table
   db.run(`CREATE TABLE IF NOT EXISTS cancellation_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     appointment_id INTEGER NOT NULL,
@@ -111,6 +111,22 @@ db.serialize(() => {
     used INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (appointment_id) REFERENCES appointments(id)
+  )`);
+
+  // Waitlist table (wachtlijst voor volle dagen)
+  db.run(`CREATE TABLE IF NOT EXISTS waitlist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT,
+    phone TEXT NOT NULL,
+    preferred_barber TEXT,
+    preferred_service TEXT,
+    preferred_date TEXT,
+    notes TEXT DEFAULT '',
+    status TEXT DEFAULT 'waiting',
+    contacted INTEGER DEFAULT 0,
+    contacted_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
   // Insert default services if table is empty

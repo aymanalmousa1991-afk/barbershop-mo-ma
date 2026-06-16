@@ -399,7 +399,7 @@ app.get('/api/appointments/available-slots', (req, res) => {
                   });
                 });
 
-        // Block slots that would end after closing time (18:00)
+                // Block slots that would end after closing time (18:00)
         allSlots.forEach(slot => {
           const slotMin = toMin(slot);
           if (slotMin + requestedDuration > CLOSING_MIN) {
@@ -407,7 +407,22 @@ app.get('/api/appointments/available-slots', (req, res) => {
           }
         });
 
-        const bookedTimes = rows.map(row => row.time);
+                // Block verleden tijd voor vandaag
+                const now = new Date();
+                const todayStr = now.toISOString().split('T')[0];
+                if (date === todayStr) {
+                  // Gebruik lokale uren/minuten (zelfde timezone als de slots)
+                  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+                  allSlots.forEach(slot => {
+                    const slotMin = toMin(slot);
+                    // Blokkeer als de starttijd al voorbij is
+                    if (slotMin < currentMinutes) {
+                      blockedSlotsSet.add(slot);
+                    }
+                  });
+                }
+
+                const bookedTimes = rows.map(row => row.time);
 
         // Check afwezigheid voor deze kapper op deze datum
         db.all(
@@ -1097,6 +1112,196 @@ app.get('/api/photos/full', (req, res) => {
         url: `${baseUrl}/uploads/photos/${row.filename}`
       }));
       res.json({ success: true, data: photos });
+    });
+  } catch (err) {
+    console.error('Error:', err);
+    res.status(500).json({ success: false, error: 'Interne server fout' });
+  }
+});
+
+// ========== WAITLIST ROUTES ==========
+
+/**
+ * POST /api/upload-hero
+ * Admin route - upload hero/banner foto
+ */
+const heroUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const heroDir = path.join(UPLOADS_DIR, 'hero');
+      if (!require('fs').existsSync(heroDir)) {
+        require('fs').mkdirSync(heroDir, { recursive: true });
+      }
+      cb(null, heroDir);
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      cb(null, `hero${ext}`);
+    },
+  }),
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png', '.webp'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Alleen JPG, PNG en WebP zijn toegestaan'));
+    }
+  },
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
+
+app.post('/api/admin/upload-hero', authenticateToken, heroUpload.single('hero'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'Geen bestand geüpload' });
+    }
+    const baseUrl = process.env.FLY_APP_URL || `http://localhost:${PORT}`;
+    const heroUrl = `${baseUrl}/uploads/hero/${req.file.filename}`;
+
+    // Sla op in home_content
+    db.run(
+      "INSERT OR REPLACE INTO home_content (section, content, updated_at) VALUES ('hero_image', ?, datetime('now'))",
+      [heroUrl],
+      function(err) {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ success: false, error: 'Opslaan mislukt' });
+        }
+        res.json({ success: true, message: 'Hero foto bijgewerkt!', data: { url: heroUrl } });
+      }
+    );
+  } catch (err) {
+    console.error('Error:', err);
+    res.status(500).json({ success: false, error: 'Upload mislukt' });
+  }
+});
+
+/**
+ * GET /api/hero-image
+ * Publiek - haal hero afbeelding URL op
+ */
+app.get('/api/hero-image', (req, res) => {
+  try {
+    db.get("SELECT content FROM home_content WHERE section = 'hero_image'", (err, row) => {
+      if (err) {
+        return res.status(500).json({ success: false, error: 'Fout bij ophalen' });
+      }
+      res.json({
+        success: true,
+        data: { url: row?.content || null }
+      });
+    });
+  } catch (err) {
+    console.error('Error:', err);
+    res.status(500).json({ success: false, error: 'Interne server fout' });
+  }
+});
+
+/**
+ * POST /api/waitlist
+ * Publieke route - inschrijven op wachtlijst
+ */
+app.post('/api/waitlist', (req, res) => {
+  try {
+    const { name, email, phone, preferred_barber, preferred_service, preferred_date, notes } = req.body;
+
+    if (!name || !phone) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Naam en telefoonnummer zijn verplicht' 
+      });
+    }
+
+    db.run(
+      `INSERT INTO waitlist (name, email, phone, preferred_barber, preferred_service, preferred_date, notes, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting')`,
+      [name, email || '', phone, preferred_barber || '', preferred_service || '', preferred_date || '', notes || ''],
+      function(err) {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ success: false, error: 'Inschrijven op wachtlijst mislukt' });
+        }
+        res.status(201).json({
+          success: true,
+          message: 'Je bent ingeschreven op de wachtlijst! We bellen je terug zodra er een plek vrij is.',
+          data: { id: this.lastID }
+        });
+      }
+    );
+  } catch (err) {
+    console.error('Error:', err);
+    res.status(500).json({ success: false, error: 'Interne server fout' });
+  }
+});
+
+/**
+ * GET /api/admin/waitlist
+ * Admin route - haal wachtlijst op
+ */
+app.get('/api/admin/waitlist', authenticateToken, (req, res) => {
+  try {
+    const { status } = req.query;
+    let query = 'SELECT * FROM waitlist';
+    const params = [];
+
+    if (status) {
+      query += ' WHERE status = ?';
+      params.push(status);
+    }
+
+    query += ' ORDER BY created_at DESC';
+
+    db.all(query, params, (err, rows) => {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({ success: false, error: 'Wachtlijst ophalen mislukt' });
+      }
+      res.json({ success: true, data: rows || [] });
+    });
+  } catch (err) {
+    console.error('Error:', err);
+    res.status(500).json({ success: false, error: 'Interne server fout' });
+  }
+});
+
+/**
+ * PUT /api/admin/waitlist/:id/contacted
+ * Admin route - markeer als gecontacteerd
+ */
+app.put('/api/admin/waitlist/:id/contacted', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    db.run(
+      `UPDATE waitlist SET contacted = 1, contacted_at = datetime('now'), status = 'contacted' WHERE id = ?`,
+      [id],
+      function(err) {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ success: false, error: 'Status bijwerken mislukt' });
+        }
+        res.json({ success: true, message: 'Gemarkeerd als gecontacteerd' });
+      }
+    );
+  } catch (err) {
+    console.error('Error:', err);
+    res.status(500).json({ success: false, error: 'Interne server fout' });
+  }
+});
+
+/**
+ * DELETE /api/admin/waitlist/:id
+ * Admin route - verwijder wachtlijst item
+ */
+app.delete('/api/admin/waitlist/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    db.run('DELETE FROM waitlist WHERE id = ?', [id], function(err) {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({ success: false, error: 'Verwijderen mislukt' });
+      }
+      res.json({ success: true, message: 'Verwijderd van wachtlijst' });
     });
   } catch (err) {
     console.error('Error:', err);

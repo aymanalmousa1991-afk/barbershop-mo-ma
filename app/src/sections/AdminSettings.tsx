@@ -172,9 +172,12 @@ export function AdminSettings() {
           <TabsTrigger value="absences" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
             Afwezigheid
           </TabsTrigger>
-          <TabsTrigger value="barbers" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
+                    <TabsTrigger value="barbers" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
             Kappers
           </TabsTrigger>
+                    <TabsTrigger value="waitlist" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
+                      Wachtlijst
+                    </TabsTrigger>
         </TabsList>
 
         {/* HOME CONTENT TAB */}
@@ -325,10 +328,15 @@ export function AdminSettings() {
           </div>
         </TabsContent>
 
-        {/* BARBERS TAB */}
+                {/* BARBERS TAB */}
         <TabsContent value="barbers">
           <BarberManagement />
         </TabsContent>
+
+                {/* WAITLIST TAB */}
+                <TabsContent value="waitlist">
+                  <WaitlistManagement />
+                </TabsContent>
       </Tabs>
 
       {/* Service Dialog */}
@@ -386,17 +394,26 @@ function HomeContentEditor() {
   const [content, setContent] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [heroUploading, setHeroUploading] = useState(false);
+  const [heroPreview, setHeroPreview] = useState<string | null>(null);
   const token = localStorage.getItem('token');
 
   useEffect(() => {
     fetchContent();
   }, []);
 
-  const fetchContent = async () => {
+    const fetchContent = async () => {
     try {
-      const res = await fetch(`${API_URL}/home-content`);
-      const data = await res.json();
+      const [contentRes, heroRes] = await Promise.all([
+        fetch(`${API_URL}/home-content`),
+        fetch(`${API_URL}/hero-image`),
+      ]);
+      const data = await contentRes.json();
       if (data.success) setContent(data.data || {});
+      const heroData = await heroRes.json();
+      if (heroData.success && heroData.data?.url) {
+        setHeroPreview(heroData.data.url);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -404,7 +421,7 @@ function HomeContentEditor() {
     }
   };
 
-    const saveSection = async (section: string) => {
+        const saveSection = async (section: string) => {
     setSaving(section);
     try {
       const res = await fetch(`${API_URL}/admin/home-content`, {
@@ -427,6 +444,34 @@ function HomeContentEditor() {
     }
   };
 
+  const handleHeroUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setHeroUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('hero', file);
+      const res = await fetch(`${API_URL}/admin/upload-hero`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success) {
+        setHeroPreview(data.data.url);
+        toast.success('Hero foto bijgewerkt!');
+      } else {
+        toast.error(data.error || 'Upload mislukt');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Upload mislukt');
+    } finally {
+      setHeroUploading(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-stone-500" /></div>;
   }
@@ -444,18 +489,50 @@ function HomeContentEditor() {
     { key: 'welcome_text', label: 'Welkomsttekst Home', type: 'textarea', default: 'Welkom bij Barbershop Mo&Ma, dé mannenkapper van Edam-Volendam.' },
   ];
 
-  return (
-    <Card className="border-0 shadow-lg">
-      <CardHeader className="bg-gradient-to-r from-[#6b0f1a] to-[#8b1523]">
-        <CardTitle className="text-white flex items-center gap-2">
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-          Home Pagina Teksten
-        </CardTitle>
-        <p className="text-white/60 text-xs mt-1">
-          Pas de teksten op de home pagina aan. Wijzigingen worden direct opgeslagen.
-        </p>
-      </CardHeader>
-      <CardContent className="p-6">
+    return (
+    <div className="space-y-6">
+      {/* Hero Foto Upload */}
+      <Card className="border-0 shadow-lg">
+        <CardHeader className="bg-gradient-to-r from-[#6b0f1a] to-[#8b1523]">
+          <CardTitle className="text-white flex items-center gap-2">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            Hero / Banner Foto
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6">
+          <div className="space-y-4">
+            {heroPreview && (
+              <div className="relative rounded-lg overflow-hidden border border-stone-200">
+                <img src={heroPreview} alt="Huidige hero" className="w-full h-48 object-cover" />
+                <p className="text-xs text-stone-500 mt-1">Huidige hero afbeelding</p>
+              </div>
+            )}
+            <div className="flex items-center gap-4">
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleHeroUpload}
+                className="block w-full text-sm text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[#6b0f1a] file:text-white hover:file:bg-[#8b1523]"
+              />
+              {heroUploading && <Loader2 className="h-5 w-5 animate-spin text-[#6b0f1a]" />}
+            </div>
+            <p className="text-xs text-stone-400">Aangeraden formaat: 1920x1080px of groter. JPG, PNG of WebP (max 10MB)</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Home Teksten */}
+      <Card className="border-0 shadow-lg">
+        <CardHeader className="bg-gradient-to-r from-[#6b0f1a] to-[#8b1523]">
+          <CardTitle className="text-white flex items-center gap-2">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+            Home Pagina Teksten
+          </CardTitle>
+          <p className="text-white/60 text-xs mt-1">
+            Pas de teksten op de home pagina aan. Wijzigingen worden direct opgeslagen.
+          </p>
+        </CardHeader>
+        <CardContent className="p-6">
         <div className="space-y-6">
           {sections.map((section) => (
             <div key={section.key} className="border-b border-stone-100 pb-4">
@@ -476,19 +553,143 @@ function HomeContentEditor() {
                   onChange={(e) => setContent({ ...content, [section.key]: e.target.value })}
                 />
               )}
-              <Button
-                size="sm"
-                onClick={() => saveSection(section.key)}
-                disabled={saving === section.key}
-                className="mt-2 bg-[#6b0f1a]"
-              >
-                {saving === section.key ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />...</> : 'Opslaan'}
-              </Button>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+                            <Button
+                        size="sm"
+                        onClick={() => saveSection(section.key)}
+                        disabled={saving === section.key}
+                        className="mt-2 bg-[#6b0f1a]"
+                      >
+                        {saving === section.key ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />...</> : 'Opslaan'}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      }
+
+function WaitlistManagement() {
+  const [entries, setEntries] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const token = localStorage.getItem('token');
+
+  const loadWaitlist = async () => {
+    setLoading(true);
+    try {
+              const res = await fetch(`${API_URL}/admin/waitlist`, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+              const data = await res.json();
+              if (data.success) setEntries(data.data);
+    } catch (err) {
+              console.error(err);
+    } finally {
+              setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadWaitlist(); }, []);
+
+  const markContacted = async (id: number) => {
+    await fetch(`${API_URL}/admin/waitlist/${id}/contacted`, {
+              method: 'PUT',
+              headers: { Authorization: `Bearer ${token}` }
+    });
+    await loadWaitlist();
+    toast.success('Gemarkeerd als gecontacteerd');
+  };
+
+  const removeEntry = async (id: number) => {
+    if (!confirm('Verwijder deze wachtlijst vermelding?')) return;
+    await fetch(`${API_URL}/admin/waitlist/${id}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token}` }
+    });
+    await loadWaitlist();
+    toast.success('Verwijderd');
+  };
+
+  if (loading) {
+    return <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-stone-500" /></div>;
+  }
+
+  return (
+    <Card className="border-0 shadow-lg">
+              <CardHeader className="bg-gradient-to-r from-[#6b0f1a] to-[#8b1523]">
+                <CardTitle className="text-white flex items-center gap-2">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                  Wachtlijst
+                  {entries.filter(e => e.status === 'waiting').length > 0 && (
+                    <span className="ml-2 bg-amber-400 text-[#1a1a1a] text-xs font-bold px-2 py-0.5 rounded-full">
+                      {entries.filter(e => e.status === 'waiting').length} wachtend
+                    </span>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                {entries.length === 0 ? (
+                  <div className="text-center py-8 text-stone-500">Niemand op de wachtlijst</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-stone-500">
+                          <th className="pb-3 pr-3">Naam</th>
+                          <th className="pb-3 pr-3">Telefoon</th>
+                          <th className="pb-3 pr-3">Kapper</th>
+                          <th className="pb-3 pr-3">Datum</th>
+                          <th className="pb-3 pr-3">Status</th>
+                          <th className="pb-3 pr-3">Notities</th>
+                          <th className="pb-3"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {entries.map((entry) => (
+                          <tr key={entry.id} className="border-b border-stone-100 hover:bg-stone-50">
+                            <td className="py-3 pr-3 font-medium">
+                              {entry.name}
+                              {entry.email && <p className="text-xs text-stone-400">{entry.email}</p>}
+                            </td>
+                            <td className="py-3 pr-3">{entry.phone}</td>
+                            <td className="py-3 pr-3">{entry.preferred_barber || '-'}</td>
+                            <td className="py-3 pr-3">{entry.preferred_date || '-'}</td>
+                            <td className="py-3 pr-3">
+                              {entry.contacted ? (
+                                <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-medium">Gecontacteerd</span>
+                              ) : (
+                                <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs font-medium">Wachtend</span>
+                              )}
+                            </td>
+                            <td className="py-3 pr-3 text-xs text-stone-500 max-w-[150px] truncate">{entry.notes || '-'}</td>
+                            <td className="py-3">
+                              <div className="flex gap-2">
+                                {!entry.contacted && (
+                                  <Button variant="outline" size="sm" onClick={() => markContacted(entry.id)} className="text-green-600 border-green-600">
+                                    bel terug
+                                  </Button>
+                                )}
+                                <Button variant="ghost" size="sm" onClick={() => removeEntry(entry.id)} className="text-red-500">
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+        </Card>
   );
 }
+
+
+
+
+
+
+
 

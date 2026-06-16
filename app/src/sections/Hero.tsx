@@ -1,6 +1,9 @@
-﻿import { Button } from '@/components/ui/button';
+﻿import { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
 import { useHomeContent } from '@/hooks/useHomeContent';
 import { ArrowRight, Calendar, Scissors, Award } from 'lucide-react';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 interface HeroProps {
   onNavigate: (page: string) => void;
@@ -8,14 +11,32 @@ interface HeroProps {
 
 export function Hero({ onNavigate }: HeroProps) {
   const { content } = useHomeContent();
+  const [heroImage, setHeroImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchHeroImage = async () => {
+      try {
+        const res = await fetch(`${API_URL}/hero-image`);
+        const data = await res.json();
+        if (data.success && data.data?.url) {
+          setHeroImage(data.data.url);
+        }
+      } catch (err) {
+        console.error('Error fetching hero image:', err);
+      }
+    };
+    fetchHeroImage();
+  }, []);
   return (
     <section className="relative w-full min-h-[700px] flex items-center overflow-hidden">
-      {/* Background Image with Overlay */}
+            {/* Background Image with Overlay */}
       <div className="absolute inset-0">
         <div 
           className="absolute inset-0 bg-cover bg-center bg-no-repeat"
           style={{
-            backgroundImage: `url('https://images.unsplash.com/photo-1599351431202-1e0f0137899a?w=1920&auto=format&fit=crop&q=80')`,
+            backgroundImage: heroImage 
+              ? `url('${heroImage}')`
+              : `url('https://images.unsplash.com/photo-1599351431202-1e0f0137899a?w=1920&auto=format&fit=crop&q=80')`,
           }}
         />
         <div className="absolute inset-0 bg-gradient-to-r from-[#1a1a1a]/90 via-[#1a1a1a]/70 to-transparent" />

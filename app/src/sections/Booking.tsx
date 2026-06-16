@@ -21,7 +21,7 @@ import {
   ChevronLeft,
   AlertCircle
 } from 'lucide-react';
-import { format, addDays, isWeekend, parseISO, startOfDay } from 'date-fns';
+import { format, addDays, parseISO, startOfDay } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
@@ -61,12 +61,22 @@ export function Booking() {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   
-  const [isLoadingBarbers, setIsLoadingBarbers] = useState(false);
+    const [isLoadingBarbers, setIsLoadingBarbers] = useState(false);
   const [isLoadingServices, setIsLoadingServices] = useState(false);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Wachtlijst state
+  const [showWaitlist, setShowWaitlist] = useState(false);
+  const [waitlistName, setWaitlistName] = useState('');
+  const [waitlistEmail, setWaitlistEmail] = useState('');
+  const [waitlistPhone, setWaitlistPhone] = useState('');
+  const [waitlistNotes, setWaitlistNotes] = useState('');
+  const [isSubmittingWaitlist, setIsSubmittingWaitlist] = useState(false);
+  const [waitlistSuccess, setWaitlistSuccess] = useState(false);
+  const [otherBarbersWithSlots, setOtherBarbersWithSlots] = useState<BarberType[]>([]);
 
     // Fetch barbers and services on mount
   useEffect(() => {
@@ -126,9 +136,17 @@ export function Booking() {
       );
       const result = await response.json();
       
-      if (result.success) {
+            if (result.success) {
         setAvailableSlots(result.data.availableSlots || []);
         setFormData(prev => ({ ...prev, time: '' }));
+        // Als geen slots beschikbaar, check andere kappers
+        if (result.data.availableSlots.length === 0 && selectedDate) {
+          checkOtherBarbers(dateStr, formData.barber_name);
+        } else {
+          setOtherBarbersWithSlots([]);
+          setShowWaitlist(false);
+          setWaitlistSuccess(false);
+        }
       }
     } catch (err) {
       console.error('Error fetching slots:', err);
@@ -138,14 +156,70 @@ export function Booking() {
     }
   };
 
+    // Check of andere kappers nog plek hebben op de gekozen datum
+  const checkOtherBarbers = async (dateStr: string, currentBarberName: string) => {
+    try {
+      const results = await Promise.all(
+        barbers
+          .filter(b => b.name !== currentBarberName)
+          .map(async (b) => {
+            const res = await fetch(
+              `${API_URL}/appointments/available-slots?date=${dateStr}&barber_name=${b.name}&service=${formData.service}`
+            );
+            const data = await res.json();
+            return data.success && data.data.availableSlots.length > 0 ? b : null;
+          })
+      );
+      setOtherBarbersWithSlots(results.filter(Boolean) as BarberType[]);
+    } catch (err) {
+      console.error('Error checking other barbers:', err);
+    }
+  };
+
+  // Wachtlijst inschrijving
+  const handleWaitlistSubmit = async () => {
+    if (!waitlistName || !waitlistPhone) return;
+    setIsSubmittingWaitlist(true);
+    try {
+      const res = await fetch(`${API_URL}/waitlist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: waitlistName,
+          email: waitlistEmail,
+          phone: waitlistPhone,
+          preferred_barber: formData.barber_name,
+          preferred_service: formData.service,
+          preferred_date: formData.date,
+          notes: waitlistNotes,
+        }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setWaitlistSuccess(true);
+      } else {
+        setError(result.error || 'Inschrijven mislukt');
+      }
+    } catch (err) {
+      setError('Inschrijven op wachtlijst mislukt');
+    } finally {
+      setIsSubmittingWaitlist(false);
+    }
+  };
+
   const handleDateSelect = (date: Date | undefined) => {
     setSelectedDate(date);
     if (date) {
+      const dateStr = format(date, 'yyyy-MM-dd');
       setFormData(prev => ({ 
         ...prev, 
-        date: format(date, 'yyyy-MM-dd'),
+        date: dateStr,
         time: '' 
       }));
+      // Check gelijk andere kappers
+      if (formData.barber_name) {
+        checkOtherBarbers(dateStr, formData.barber_name);
+      }
     }
   };
 
@@ -217,9 +291,10 @@ export function Booking() {
     const selectedService = services.find(s => s.key === formData.service);
   const selectedBarber = barbers.find(b => b.name === formData.barber_name);
 
-  const isDateDisabled = (date: Date) => {
+    const isDateDisabled = (date: Date) => {
     const today = startOfDay(new Date());
-    return date < today || isWeekend(date);
+    // Alleen zondag blokkeren (dag 0) - zaterdag (dag 6) is open 08:00-17:00
+    return date < today || date.getDay() === 0;
   };
 
   return (
@@ -328,10 +403,13 @@ export function Booking() {
                             <button
                               key={barber.id}
                               type="button"
-                              onClick={() => {
+                                                            onClick={() => {
                                 setFormData(prev => ({ ...prev, barber_name: barber.name }));
                                 setSelectedDate(undefined);
                                 setFormData(prev => ({ ...prev, date: '', time: '' }));
+                                setShowWaitlist(false);
+                                setWaitlistSuccess(false);
+                                setOtherBarbersWithSlots([]);
                               }}
                               className={`p-6 rounded-xl border-2 transition-all ${
                                 formData.barber_name === barber.name
@@ -413,7 +491,11 @@ export function Booking() {
                                     <button
                                       key={slot}
                                       type="button"
-                                      onClick={() => setFormData(prev => ({ ...prev, time: slot }))}
+                                      onClick={() => {
+                                        setFormData(prev => ({ ...prev, time: slot }));
+                                        setShowWaitlist(false);
+                                        setWaitlistSuccess(false);
+                                      }}
                                       className={`py-1.5 sm:py-2.5 px-1 sm:px-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium transition-all duration-200 ${
                                         isSelected
                                           ? 'bg-[#6b0f1a] text-white shadow-lg shadow-[#6b0f1a]/30 scale-105'
@@ -425,13 +507,127 @@ export function Booking() {
                                   );
                                 })}
                               </div>
-                            ) : (
-                              <div className="p-6 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-sm flex items-start gap-3">
-                                <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
-                                <div>
-                                  <p className="font-medium">Geen beschikbare tijden</p>
-                                  <p className="text-xs mt-1">Deze datum is helaas volgeboekt. Kies een andere datum of kapper.</p>
+                                                        ) : (
+                              <div className="space-y-4">
+                                <div className="p-6 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-sm">
+                                  <div className="flex items-start gap-3">
+                                    <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                                    <div>
+                                      <p className="font-medium">Geen beschikbare tijden</p>
+                                      <p className="text-xs mt-1">Deze datum is helaas volgeboekt voor {selectedBarber?.display_name}.</p>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Suggesties: andere kappers op deze dag */}
+                                  {otherBarbersWithSlots.length > 0 && (
+                                    <div className="mt-4 pt-3 border-t border-amber-300/50">
+                                      <p className="text-xs font-medium mb-2">✅ Wel beschikbaar bij:</p>
+                                      <div className="flex flex-wrap gap-2">
+                                        {otherBarbersWithSlots.map(b => (
+                                          <button
+                                            key={b.id}
+                                            type="button"
+                                            onClick={() => {
+                                              setFormData(prev => ({ ...prev, barber_name: b.name, time: '' }));
+                                              setShowWaitlist(false);
+                                            }}
+                                            className="px-3 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-medium hover:bg-amber-100 transition-colors"
+                                          >
+                                            {b.display_name} →
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
+
+                                {/* Wachtlijst optie */}
+                                {!showWaitlist && !waitlistSuccess && (
+                                  <div className="text-center">
+                                    <p className="text-xs text-stone-500 mb-2">Of blijf je liever bij {selectedBarber?.display_name}?</p>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => setShowWaitlist(true)}
+                                      className="text-[#6b0f1a] border-[#6b0f1a] hover:bg-[#6b0f1a]/5"
+                                    >
+                                      <Clock className="h-4 w-4 mr-1" />
+                                      Zet me op de wachtlijst
+                                    </Button>
+                                  </div>
+                                )}
+
+                                {/* Wachtlijst formulier */}
+                                {showWaitlist && !waitlistSuccess && (
+                                  <div className="bg-white border border-stone-200 rounded-xl p-4 space-y-3">
+                                    <p className="text-sm font-medium text-[#1a1a1a]">
+                                      📋 Wachtlijst voor {selectedBarber?.display_name}
+                                    </p>
+                                    <p className="text-xs text-stone-500">
+                                      Laat je gegevens achter en we bellen je zodra er een plek vrij is bij {selectedBarber?.display_name}.
+                                    </p>
+                                    <div className="space-y-2">
+                                      <Input
+                                        value={waitlistName}
+                                        onChange={e => setWaitlistName(e.target.value)}
+                                        placeholder="Je naam *"
+                                        className="text-sm"
+                                      />
+                                      <Input
+                                        value={waitlistPhone}
+                                        onChange={e => setWaitlistPhone(e.target.value)}
+                                        placeholder="Telefoonnummer *"
+                                        className="text-sm"
+                                      />
+                                      <Input
+                                        value={waitlistEmail}
+                                        onChange={e => setWaitlistEmail(e.target.value)}
+                                        placeholder="E-mail (optioneel)"
+                                        className="text-sm"
+                                      />
+                                      <Textarea
+                                        value={waitlistNotes}
+                                        onChange={e => setWaitlistNotes(e.target.value)}
+                                        placeholder="Opmerkingen (bv. welke dag/tijd voorkeur)"
+                                        rows={2}
+                                        className="text-sm"
+                                      />
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => { setShowWaitlist(false); setWaitlistNotes(''); }}
+                                        className="flex-1"
+                                      >
+                                        Annuleren
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        onClick={handleWaitlistSubmit}
+                                        disabled={!waitlistName || !waitlistPhone || isSubmittingWaitlist}
+                                        className="flex-1 bg-[#6b0f1a] hover:bg-[#8b1523]"
+                                      >
+                                        {isSubmittingWaitlist ? (
+                                          <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Bezig...</>
+                                        ) : (
+                                          'Inschrijven'
+                                        )}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Wachtlijst success */}
+                                {waitlistSuccess && (
+                                  <div className="p-4 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm">
+                                    <p className="font-medium">✅ Je staat op de wachtlijst!</p>
+                                    <p className="text-xs mt-1">We bellen of mailen je zodra er plek is bij {selectedBarber?.display_name}.</p>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>

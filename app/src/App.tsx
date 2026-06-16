@@ -25,7 +25,7 @@ function AppContent() {
     }
     return page || 'home';
   });
-  const { isAuthenticated } = useAuth();
+    const { isAuthenticated } = useAuth();
 
   const handleNavigate = (page: string) => {
     setCurrentPage(page);
