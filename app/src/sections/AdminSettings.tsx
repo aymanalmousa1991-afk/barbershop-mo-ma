@@ -411,10 +411,19 @@ function HomeContentEditor() {
       const data = await contentRes.json();
       if (data.success) setContent(data.data || {});
             const heroData = await heroRes.json();
-      if (heroData.success && heroData.data?.url) {
-        const ts = heroData.data.updated_at ? `?t=${Date.parse(heroData.data.updated_at)}` : `?t=${Date.now()}`;
-        setHeroPreview(`${heroData.data.url}${ts}`);
-      }
+            if (heroData.success && heroData.data?.url) {
+              const ts = heroData.data.updated_at ? `?t=${Date.parse(heroData.data.updated_at)}` : `?t=${Date.now()}`;
+              const baseUrl = API_URL.replace('/api', '');
+              const fullUrl = heroData.data.url.startsWith('/') ? `${baseUrl}${heroData.data.url}` : heroData.data.url;
+              setHeroPreview(`${fullUrl}${ts}`);
+            }
+            const heroData2 = await heroRes.json();
+            if (heroData2.success && heroData2.data?.url) {
+              const ts = heroData2.data.updated_at ? `?t=${Date.parse(heroData2.data.updated_at)}` : `?t=${Date.now()}`;
+              const baseUrl = API_URL.replace('/api', '');
+              const fullUrl = heroData2.data.url.startsWith('/') ? `${baseUrl}${heroData2.data.url}` : heroData2.data.url;
+              setHeroPreview(`${fullUrl}${ts}`);
+            }
     } catch (err) {
       console.error(err);
     } finally {

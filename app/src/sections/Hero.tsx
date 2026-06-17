@@ -18,10 +18,13 @@ export function Hero({ onNavigate }: HeroProps) {
       try {
         const res = await fetch(`${API_URL}/hero-image`);
         const data = await res.json();
-        if (data.success && data.data?.url) {
+                if (data.success && data.data?.url) {
           // Cache-busting: voeg updated_at timestamp toe
           const ts = data.data.updated_at ? `?t=${Date.parse(data.data.updated_at)}` : `?t=${Date.now()}`;
-          setHeroImage(`${data.data.url}${ts}`);
+          // Als de URL relatief is (begint met /), voeg de API base URL toe
+          const baseUrl = API_URL.replace('/api', '');
+          const fullUrl = data.data.url.startsWith('/') ? `${baseUrl}${data.data.url}` : data.data.url;
+          setHeroImage(`${fullUrl}${ts}`);
         }
       } catch (err) {
         console.error('Error fetching hero image:', err);
