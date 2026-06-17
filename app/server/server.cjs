@@ -1109,7 +1109,7 @@ app.get('/api/photos/full', (req, res) => {
       const baseUrl = process.env.FLY_APP_URL || 'https://barbershop-mo-ma-api.fly.dev';
       const photos = (rows || []).map(row => ({
         ...row,
-        url: `${baseUrl}/uploads/photos/${row.filename}`
+        url: `/uploads/photos/${row.filename}`
       }));
       res.json({ success: true, data: photos });
     });
@@ -1156,8 +1156,8 @@ app.post('/api/admin/upload-hero', authenticateToken, heroUpload.single('hero'),
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'Geen bestand geüpload' });
     }
-    const baseUrl = process.env.FLY_APP_URL || `http://localhost:${PORT}`;
-    const heroUrl = `${baseUrl}/uploads/hero/${req.file.filename}`;
+        const baseUrl = process.env.FLY_APP_URL || 'https://barbershop-mo-ma-api.fly.dev';
+    const heroUrl = `/uploads/hero/${req.file.filename}`;
 
     // Sla op in home_content
     db.run(
