@@ -322,47 +322,47 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* TABS */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
-                    <TabsList className="bg-stone-100">
-            <TabsTrigger value="dashboard" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
-              Dashboard
-            </TabsTrigger>
-            <TabsTrigger value="waitlist" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
-              <ClipboardList className="h-4 w-4 mr-1" />Wachtlijst
-            </TabsTrigger>
-            <TabsTrigger value="photos" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
-              Foto beheer
-            </TabsTrigger>
-            <TabsTrigger value="reports" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
-              Rapportage
-            </TabsTrigger>
-            <TabsTrigger value="settings" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
-              <Settings className="h-4 w-4 mr-1" />Instellingen
-            </TabsTrigger>
-          </TabsList>
+                    <TabsList className="bg-stone-100 w-full justify-start overflow-x-auto flex-nowrap h-auto gap-1 p-1">
+                      <TabsTrigger value="dashboard" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white text-xs sm:text-sm whitespace-nowrap px-2 sm:px-3">
+                        Dashboard
+                      </TabsTrigger>
+                      <TabsTrigger value="waitlist" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white text-xs sm:text-sm whitespace-nowrap px-2 sm:px-3">
+                        <ClipboardList className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Wachtlijst</span><span className="sm:hidden">Wacht</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="photos" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white text-xs sm:text-sm whitespace-nowrap px-2 sm:px-3">
+                        <span className="hidden sm:inline">Foto beheer</span><span className="sm:hidden">Foto</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="reports" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white text-xs sm:text-sm whitespace-nowrap px-2 sm:px-3">
+                        Rapport
+                      </TabsTrigger>
+                      <TabsTrigger value="settings" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white text-xs sm:text-sm whitespace-nowrap px-2 sm:px-3">
+                        <Settings className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Instellingen</span><span className="sm:hidden">Instel.</span>
+                      </TabsTrigger>
+                    </TabsList>
 
           <TabsContent value="dashboard">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
               <div>
-                <h1 className="text-3xl font-bold text-[#1a1a1a] logo-font">Dashboard</h1>
+                <h1 className="text-2xl sm:text-3xl font-bold text-[#1a1a1a] logo-font">Dashboard</h1>
                 <p className="text-stone-600">
                   Welkom terug, <span className="font-medium text-[#6b0f1a]">{user?.username}</span>
                 </p>
               </div>
-              <div className="flex items-center gap-3">
-                <Button variant="outline" size="sm" onClick={() => setPasswordDialogOpen(true)} className="gap-2 border-[#6b0f1a] text-[#6b0f1a]">
-                  <KeyRound className="h-4 w-4" />Wachtwoord
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                                <Button variant="outline" size="sm" onClick={() => setPasswordDialogOpen(true)} className="gap-2 border-[#6b0f1a] text-[#6b0f1a]">
+                  <KeyRound className="h-4 w-4" /><span className="hidden sm:inline">Wachtwoord</span>
                 </Button>
                 <Button variant={activeView === 'agenda' ? 'default' : 'outline'} size="sm" onClick={() => setActiveView('agenda')}
                   className={activeView === 'agenda' ? 'bg-[#6b0f1a]' : 'border-[#6b0f1a] text-[#6b0f1a]'}>
-                  <Calendar className="h-4 w-4 mr-1" />Agenda
+                  <Calendar className="h-4 w-4 sm:mr-1" />Agenda
                 </Button>
                 <Button variant={activeView === 'list' ? 'default' : 'outline'} size="sm" onClick={() => setActiveView('list')}
                   className={activeView === 'list' ? 'bg-[#6b0f1a]' : 'border-[#6b0f1a] text-[#6b0f1a]'}>
-                  <Users className="h-4 w-4 mr-1" />Lijst
+                  <Users className="h-4 w-4 sm:mr-1" />Lijst
                 </Button>
-                <Button variant="outline" onClick={handleLogout} className="gap-2 border-[#6b0f1a] text-[#6b0f1a] hover:bg-[#6b0f1a] hover:text-white">
-                  <LogOut className="h-4 w-4" />Uitloggen
+                                <Button variant="outline" size="sm" onClick={handleLogout} className="gap-2 border-[#6b0f1a] text-[#6b0f1a] hover:bg-[#6b0f1a] hover:text-white">
+                  <LogOut className="h-4 w-4" /><span className="hidden sm:inline">Uitloggen</span>
                 </Button>
               </div>
             </div>
