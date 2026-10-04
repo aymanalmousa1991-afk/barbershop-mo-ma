@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { 
-  LogOut, Calendar, Clock, Mail, Phone, FileText,
+  LogOut, Calendar, Calendar as CalendarIcon, Clock, Mail, Phone, FileText,
   Trash2, Loader2, AlertTriangle, CheckCircle, TrendingUp,
   Scissors, Users, User, ChevronLeft, ChevronRight,
   Settings, ArrowRight, KeyRound, Plus
@@ -40,6 +40,20 @@ const barberColors: Record<string, { bg: string; text: string; border: string; l
 };
 
 const defaultBarberColor = { bg: 'bg-stone-600', text: 'text-stone-600', border: 'border-stone-600', light: 'bg-stone-50 border-stone-200' };
+
+// Vaste weergavevolgorde van kappers: Mo, Ma, Derde kapper
+const barberOrder: string[] = ['mo', 'ma', 'third'];
+function sortBarbers<T extends { key: string }>(list: T[]): T[] {
+  return [...list].sort((a, b) => {
+    const ia = barberOrder.indexOf(a.key?.toLowerCase());
+    const ib = barberOrder.indexOf(b.key?.toLowerCase());
+    // Onbekende kappers achteraan, op naam
+    if (ia === -1 && ib === -1) return 0;
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+}
 
 function getBarberColor(barberName: string) {
   return barberColors[barberName?.toLowerCase()] || defaultBarberColor;
@@ -117,12 +131,13 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       const token = localStorage.getItem('token');
       const res = await fetch(API_URL + '/admin/barbers', { headers: { Authorization: 'Bearer ' + token } });
       const data = await res.json();
-      if (data.success && data.data) {
-        setBarbersAgenda(data.data.filter((b: any) => b.is_active).map((b: any) => ({
+            if (data.success && data.data) {
+        const mapped = data.data.filter((b: any) => b.is_active).map((b: any) => ({
           key: b.name,
           name: b.display_name,
           color: barberColors[b.name] || { bg: 'bg-stone-600', text: 'text-stone-600', border: 'border-stone-600', light: 'bg-stone-50 border-stone-200' },
-        })));
+        }));
+        setBarbersAgenda(sortBarbers(mapped));
       }
     } catch (err) {
       console.error('Error fetching barbers:', err);
@@ -373,13 +388,24 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                       {barbersAgenda.map(b => <option key={b.key} value={b.key}>{b.name}</option>)}
                     </select>
                   </div>
-                  <Button variant="ghost" onClick={handlePrevDay} className="text-[#6b0f1a] hover:bg-[#6b0f1a]/10">
+                                    <Button variant="ghost" onClick={handlePrevDay} className="text-[#6b0f1a] hover:bg-[#6b0f1a]/10">
                     <ChevronLeft className="h-5 w-5 mr-1" />Vorige dag
                   </Button>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <span className="font-bold text-lg text-[#1a1a1a]">
                       {format(parseISO(selectedDate), 'EEEE d MMMM yyyy', { locale: nl })}
                     </span>
+                    {/* Datumkiezer: spring direct naar elke gewenste datum */}
+                    <div className="flex items-center gap-1">
+                      <CalendarIcon className="h-4 w-4 text-[#6b0f1a]" />
+                      <Input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
+                        className="h-9 w-[160px]"
+                        aria-label="Kies een datum"
+                      />
+                    </div>
                     {!isTodaySelected && (
                       <Button size="sm" onClick={handleToday} className="bg-[#d4af37] text-[#1a1a1a] hover:bg-[#b8941f]">
                         Vandaag

@@ -27,6 +27,7 @@ export function Navbar({ onNavigate, currentPage }: NavbarProps) {
     { id: 'services', label: 'Tarieven' },
     { id: 'photos', label: "Foto's" },
     { id: 'booking', label: 'Afspraak' },
+    { id: 'contact', label: 'Contact' },
     ...(isAuthenticated ? [{ id: 'admin', label: 'Admin' }] : []),
   ];
 

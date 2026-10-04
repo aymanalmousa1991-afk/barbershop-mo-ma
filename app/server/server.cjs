@@ -483,15 +483,15 @@ app.post('/api/appointments', (req, res) => {
   try {
     const { name, email, phone, service, barber_name, date, time, notes } = req.body;
 
-    // Validation - email is optioneel
-    if (!name || !service || !barber_name || !date || !time) {
+    // Validation - naam, e-mail en telefoon zijn verplicht (opmerkingen optioneel)
+    if (!name || !email || !phone || !service || !barber_name || !date || !time) {
       return res.status(400).json({ 
         success: false,
-        error: 'Naam, behandeling, kapper, datum en tijd zijn verplicht' 
+        error: 'Naam, e-mail, telefoon, behandeling, kapper, datum en tijd zijn verplicht' 
       });
     }
 
-    // Email validation (alleen als ingevuld)
+    // Email validation
     if (email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {

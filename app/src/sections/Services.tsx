@@ -19,11 +19,8 @@ interface ServiceType {
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
-const inclusiefItems = [
-  'Neushaar verwijderen',
-  'Oorhaar branden',
-  'Wenkbrauwen bijwerken',
-];
+const INCLUSIEF_TEKST = 'Alle behandelingen zijn inclusief neushaar verwijderen, oorhaar branden & wenkbrauwen gedeeltelijk epileren/bijwerken met touw (exclusief jonge heren).';
+const CADEAUBON_TEKST = 'Voor feestelijke gebeurtenissen zijn er cadeaubonnen verkrijgbaar bij de kassa (bedrag naar keuze).';
 
 function formatPrice(price: number): string {
   return '\u20AC ' + price.toFixed(2).replace('.', ',');
@@ -48,11 +45,11 @@ const categoryConfig: Record<string, { title: string; color: string; icon: typeo
     icon: User,
     keys: ['jong-tm11', 'jong-12-13'],
   },
-  extras: {
-    title: 'Extra Services',
-    color: 'bg-gradient-to-r from-[#d4af37] to-[#b8941f]',
+  overige: {
+    title: 'Overige services',
+    color: 'bg-stone-700',
     icon: Gift,
-    keys: ['wassen', 'wenkbrauwen'],
+    keys: ['wassen', 'ontharen-wax', 'wenkbrauwen'],
   },
 };
 
@@ -87,7 +84,7 @@ export function Services({ onNavigate }: ServicesProps) {
   const herenList = getServicesByKeys(categoryConfig.heren.keys);
   const baardList = getServicesByKeys(categoryConfig.baard.keys);
   const jongList = getServicesByKeys(categoryConfig.jong.keys);
-  const extrasList = getServicesByKeys(categoryConfig.extras.keys);
+  const overigeList = getServicesByKeys(categoryConfig.overige.keys);
 
   // Vang alle diensten die niet in een categorie vallen
   const allConfiguredKeys = Object.values(categoryConfig).flatMap(c => c.keys);
@@ -184,33 +181,25 @@ export function Services({ onNavigate }: ServicesProps) {
             </Card>
           )}
 
-          {/* EXTRA SERVICES */}
-          {extrasList.length > 0 && (
+          {/* OVERIGE SERVICES */}
+          {overigeList.length > 0 && (
             <Card className="card-hover border-0 shadow-lg overflow-hidden">
-              <div className="bg-gradient-to-r from-[#d4af37] to-[#b8941f] p-6">
+              <div className="bg-stone-700 p-6">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center"><Gift className="h-6 w-6 text-[#d4af37]" /></div>
-                  <h3 className="text-2xl font-bold text-white logo-font">Extra Services</h3>
+                  <div className="w-12 h-12 bg-[#d4af37] rounded-full flex items-center justify-center"><Gift className="h-6 w-6 text-stone-700" /></div>
+                  <h3 className="text-2xl font-bold text-white logo-font">Overige services</h3>
                 </div>
               </div>
               <CardContent className="p-6">
                 <div className="space-y-4">
-                  {extrasList.map((service) => (
+                  {overigeList.map((service) => (
                     <div key={service.key} className="flex justify-between items-center py-3 border-b border-stone-100 last:border-0">
-                      <p className="font-medium text-[#1a1a1a]">{service.name}</p>
+                      <div>
+                        <p className="font-medium text-[#1a1a1a]">{service.name}</p>
+                      </div>
                       <span className="text-lg font-bold text-[#6b0f1a] whitespace-nowrap">{formatPrice(service.price)}</span>
                     </div>
                   ))}
-                </div>
-                <div className="mt-6 p-4 bg-[#faf9f7] rounded-lg">
-                  <h4 className="font-semibold text-[#1a1a1a] mb-3 text-sm">Inclusief bij alle behandelingen:</h4>
-                  <ul className="space-y-2">
-                    {inclusiefItems.map((item, index) => (
-                      <li key={index} className="flex items-center gap-2 text-sm text-stone-600">
-                        <Check className="h-4 w-4 text-[#d4af37]" />{item}
-                      </li>
-                    ))}
-                  </ul>
                 </div>
               </CardContent>
             </Card>
@@ -239,13 +228,16 @@ export function Services({ onNavigate }: ServicesProps) {
               </CardContent>
             </Card>
           )}
+        </div>
 
+        {/* EXTRA'S, ACTIES & INFORMATIE */}
+        <div className="mt-12 grid md:grid-cols-2 gap-8">
           {/* EXTRA'S & ACTIES KAART */}
-          <Card className="card-hover border-0 shadow-lg overflow-hidden">
+          <Card className="card-hover border-0 shadow-lg overflow-hidden h-full">
             <div className="bg-[#6b0f1a] p-6">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-[#d4af37] rounded-full flex items-center justify-center"><Gift className="h-6 w-6 text-[#6b0f1a]" /></div>
-                <h3 className="text-2xl font-bold text-white logo-font">Extra's & Acties</h3>
+                <h3 className="text-2xl font-bold text-white logo-font">Extra's &amp; Acties</h3>
               </div>
             </div>
             <CardContent className="p-6">
@@ -258,14 +250,25 @@ export function Services({ onNavigate }: ServicesProps) {
               </div>
             </CardContent>
           </Card>
-        </div>
 
-        <div className="mt-12 text-center">
-          <div className="inline-flex items-center gap-4 bg-white rounded-full px-8 py-4 shadow-lg">
-            <Gift className="h-6 w-6 text-[#d4af37]" />
-            <span className="text-[#1a1a1a] font-medium">Cadeaubonnen verkrijgbaar bij de kassa</span>
-            <span className="text-[#d4af37] font-bold">(bedrag naar keuze)</span>
-          </div>
+          {/* Noot / extra informatie */}
+          <Card className="card-hover border-0 shadow-lg overflow-hidden h-full">
+            <div className="bg-gradient-to-r from-[#d4af37] to-[#b8941f] p-6">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center"><Check className="h-6 w-6 text-[#d4af37]" /></div>
+                <h3 className="text-2xl font-bold text-white logo-font">Goed om te weten</h3>
+              </div>
+            </div>
+            <CardContent className="p-6">
+              <div className="space-y-3">
+                <p className="text-sm text-stone-600">{INCLUSIEF_TEKST}</p>
+                <p className="text-sm text-stone-600 flex items-start gap-2">
+                  <Gift className="h-4 w-4 text-[#d4af37] mt-0.5 flex-shrink-0" />
+                  <span>{CADEAUBON_TEKST}</span>
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
         <div className="text-center mt-12">
           <Button size="lg" onClick={() => onNavigate('booking')} className="bg-[#6b0f1a] hover:bg-[#8b1523] text-white px-10 py-6 text-lg btn-shine">

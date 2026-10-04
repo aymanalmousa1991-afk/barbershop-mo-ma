@@ -11,6 +11,7 @@ import { AboutPage } from '@/sections/AboutPage';
 import { PhotoGallery } from '@/sections/PhotoGallery';
 import { CancelAppointment } from '@/sections/CancelAppointment';
 import { PrivacyPage } from '@/sections/PrivacyPage';
+import { ContactPage } from '@/sections/ContactPage';
 import { CookieConsent } from '@/components/CookieConsent';
 import { Toaster } from '@/components/ui/sonner';
 
@@ -47,12 +48,14 @@ function AppContent() {
         return <PhotoGallery />;
       case 'services':
         return <Services onNavigate={handleNavigate} />;
-      case 'booking':
-        return <Booking />;
+            case 'booking':
+        return <Booking onNavigate={handleNavigate} />;
       case 'cancel':
         return <CancelAppointment />;
-      case 'privacy':
+            case 'privacy':
         return <PrivacyPage onNavigate={handleNavigate} />;
+      case 'contact':
+        return <ContactPage onNavigate={handleNavigate} />;
       case 'admin':
       case 'admin-dashboard':
         if (isAuthenticated) {

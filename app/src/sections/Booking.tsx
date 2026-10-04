@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect, useRef } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -41,7 +41,35 @@ interface BarberType {
   display_name: string;
 }
 
-export function Booking() {
+interface BookingProps {
+  onNavigate: (page: string) => void;
+}
+
+// Vaste weergavevolgorde van kappers: Mo, Ma, overige kappers
+const barberOrder: string[] = ['mo', 'ma'];
+function sortBarbers<T extends { name: string }>(list: T[]): T[] {
+  return [...list].sort((a, b) => {
+    const ia = barberOrder.indexOf(a.name?.toLowerCase());
+    const ib = barberOrder.indexOf(b.name?.toLowerCase());
+    // Mo (0) en Ma (1) eerst; alle overige kappers daarna
+    const ra = ia === -1 ? 99 : ia;
+    const rb = ib === -1 ? 99 : ib;
+    return ra - rb;
+  });
+}
+
+// Speciale waarde voor "geen medewerkersvoorkeur"
+const ANY_BARBER = '__any__';
+
+// Behandelingscategorieën (in deze volgorde weergegeven)
+const serviceCategories: { key: string; title: string; keys: string[] }[] = [
+  { key: 'heren', title: 'Heren', keys: ['knippen-stylen', 'knippen-baard', 'senioren', 'tondeuse'] },
+  { key: 'baard', title: 'Baardverzorging', keys: ['baard', 'baard-nek'] },
+  { key: 'jong', title: 'Jonge Heren', keys: ['jong-tm11', 'jong-12-13'] },
+  { key: 'overige', title: 'Overige services', keys: ['wassen', 'ontharen-wax', 'wenkbrauwen'] },
+];
+
+export function Booking({ onNavigate }: BookingProps) {
   // Step: 1=Service, 2=Barber, 3=DateTime, 4=ContactInfo, 5=Review
   const [currentStep, setCurrentStep] = useState(1);
   
@@ -74,9 +102,21 @@ export function Booking() {
   const [waitlistEmail, setWaitlistEmail] = useState('');
   const [waitlistPhone, setWaitlistPhone] = useState('');
   const [waitlistNotes, setWaitlistNotes] = useState('');
-  const [isSubmittingWaitlist, setIsSubmittingWaitlist] = useState(false);
+    const [isSubmittingWaitlist, setIsSubmittingWaitlist] = useState(false);
   const [waitlistSuccess, setWaitlistSuccess] = useState(false);
   const [otherBarbersWithSlots, setOtherBarbersWithSlots] = useState<BarberType[]>([]);
+    // Bij "geen medewerkersvoorkeur": map van tijd -> toegewezen kapper
+  const [anyBarberSlotMap, setAnyBarberSlotMap] = useState<Record<string, BarberType>>({});
+    // De concreet toegewezen kapper bij "geen voorkeur"
+  const [assignedBarber, setAssignedBarber] = useState<BarberType | null>(null);
+  // Horizontaal scrollen van behandelingscategorieën
+  const categoriesScrollRef = useRef<HTMLDivElement>(null);
+  const scrollCategories = (dir: 'left' | 'right') => {
+    const el = categoriesScrollRef.current;
+    if (!el) return;
+    const amount = el.clientWidth * 0.8;
+    el.scrollBy({ left: dir === 'left' ? -amount : amount, behavior: 'smooth' });
+  };
 
     // Fetch barbers and services on mount
   useEffect(() => {
@@ -90,8 +130,8 @@ export function Booking() {
       const response = await fetch(`${API_URL}/barbers`);
       const result = await response.json();
       
-      if (result.success) {
-        setBarbers(result.data);
+            if (result.success) {
+        setBarbers(sortBarbers(result.data));
       }
     } catch (err) {
       console.error('Error fetching barbers:', err);
@@ -123,7 +163,7 @@ export function Booking() {
     }
   }, [selectedDate, formData.barber_name, formData.service]);
 
-  const fetchAvailableSlots = async () => {
+    const fetchAvailableSlots = async () => {
     if (!selectedDate || !formData.barber_name) return;
     
     setIsLoadingSlots(true);
@@ -131,13 +171,42 @@ export function Booking() {
     
     try {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
-            const response = await fetch(
+
+      // Geen medewerkersvoorkeur: combineer vrije slots van alle kappers
+      if (formData.barber_name === ANY_BARBER) {
+        const slotMap: Record<string, BarberType> = {};
+        await Promise.all(
+          barbers.map(async (b) => {
+            const res = await fetch(
+              `${API_URL}/appointments/available-slots?date=${dateStr}&barber_name=${b.name}&service=${formData.service}`
+            );
+            const data = await res.json();
+            if (data.success) {
+              (data.data.availableSlots || []).forEach((slot: string) => {
+                // Eerste beschikbare kapper in de vaste volgorde wint
+                if (!slotMap[slot]) slotMap[slot] = b;
+              });
+            }
+          })
+        );
+        const slots = Object.keys(slotMap).sort();
+        setAnyBarberSlotMap(slotMap);
+        setAvailableSlots(slots);
+        setFormData(prev => ({ ...prev, time: '' }));
+        setOtherBarbersWithSlots([]);
+        setShowWaitlist(false);
+        setWaitlistSuccess(false);
+        return;
+      }
+
+      const response = await fetch(
         `${API_URL}/appointments/available-slots?date=${dateStr}&barber_name=${formData.barber_name}&service=${formData.service}`
       );
       const result = await response.json();
       
             if (result.success) {
         setAvailableSlots(result.data.availableSlots || []);
+        setAnyBarberSlotMap({});
         setFormData(prev => ({ ...prev, time: '' }));
         // Als geen slots beschikbaar, check andere kappers
         if (result.data.availableSlots.length === 0 && selectedDate) {
@@ -228,12 +297,24 @@ export function Booking() {
     setIsSubmitting(true);
     setError(null);
 
+        // Bepaal de concrete kapper (bij "geen voorkeur" is dat de toegewezen kapper)
+    const finalBarberName = formData.barber_name === ANY_BARBER
+      ? (assignedBarber?.name || '')
+      : formData.barber_name;
+
+    if (!finalBarberName) {
+      setError('Er is geen kapper beschikbaar voor dit tijdstip. Kies een ander tijdstip.');
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       const response = await fetch(`${API_URL}/appointments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
+          barber_name: finalBarberName,
           treatment: formData.service, // Backend slaat op als 'treatment'
         }),
       });
@@ -257,6 +338,8 @@ export function Booking() {
         notes: '',
       });
       setSelectedDate(undefined);
+      setAssignedBarber(null);
+      setAnyBarberSlotMap({});
       setCurrentStep(1);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Er is iets misgegaan. Probeer het opnieuw.';
@@ -274,8 +357,8 @@ export function Booking() {
         return !!formData.barber_name;
       case 3:
         return !!formData.date && !!formData.time;
-      case 4:
-        return !!formData.name;
+            case 4:
+        return !!formData.name && !!formData.email && !!formData.phone;
       default:
         return false;
     }
@@ -283,19 +366,27 @@ export function Booking() {
 
   const canSubmit = 
     formData.name && 
+    formData.email &&
+    formData.phone &&
     formData.service && 
     formData.barber_name && 
     formData.date && 
     formData.time;
 
-    const selectedService = services.find(s => s.key === formData.service);
-  const selectedBarber = barbers.find(b => b.name === formData.barber_name);
+        const selectedService = services.find(s => s.key === formData.service);
+  const selectedBarber = formData.barber_name === ANY_BARBER
+    ? (assignedBarber || undefined)
+    : barbers.find(b => b.name === formData.barber_name);
 
     const isDateDisabled = (date: Date) => {
-    const today = startOfDay(new Date());
-    // Alleen zondag blokkeren (dag 0) - zaterdag (dag 6) is open 08:00-17:00
-    return date < today || date.getDay() === 0;
-  };
+      const today = startOfDay(new Date());
+      // Alleen zondag blokkeren (dag 0) - zaterdag (dag 6) is open 08:00-17:00
+      return date < today || date.getDay() === 0;
+    };
+
+    // Inloopdagen: woensdag (3) en donderdag (4) werken wij niet op afspraak
+    const INLOOP_DAGEN = [3, 4];
+    const isInloopDag = (date: Date | undefined) => !!date && INLOOP_DAGEN.includes(date.getDay());
 
   return (
     <section className="w-full py-12 sm:py-24 bg-gradient-to-b from-white to-[#faf9f7]">
@@ -311,6 +402,30 @@ export function Booking() {
           <p className="text-base sm:text-lg text-stone-600 px-2">
             Maak eenvoudig een afspraak online. Wij zijn van maandag t/m zaterdag geopend: uitsluitend op afspraak (Ma, Di, Vr, Za) of gewoon binnenlopen (Wo, Do)!
           </p>
+                </div>
+
+        {/* Hoe werkt het? - stappenplan direct bovenaan, zodat klanten het zien voordat ze gaan plannen */}
+        <div className="bg-gradient-to-br from-[#6b0f1a] to-[#8b1523] text-white rounded-2xl shadow-lg p-5 sm:p-8 mb-10 sm:mb-14">
+          <h3 className="font-bold text-lg sm:text-xl mb-5 flex items-center justify-center gap-2 text-center">
+            <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 text-[#d4af37]" />
+            Hoe werkt het?
+          </h3>
+          <ol className="grid grid-cols-1 sm:grid-cols-5 gap-4 sm:gap-3">
+            {[
+              'Kies je behandeling',
+              'Selecteer je kapper',
+              'Kies datum en tijd',
+              'Vul je gegevens in',
+              'Bevestig je afspraak!',
+            ].map((stepLabel, index) => (
+              <li key={index} className="flex sm:flex-col items-center sm:text-center gap-3 sm:gap-2">
+                <span className="flex-shrink-0 w-9 h-9 rounded-full bg-[#d4af37] text-[#1a1a1a] font-bold flex items-center justify-center">
+                  {index + 1}
+                </span>
+                <span className="text-sm font-medium">{stepLabel}</span>
+              </li>
+            ))}
+          </ol>
         </div>
 
         <div className="flex flex-col lg:grid lg:grid-cols-3 gap-6 lg:gap-8">
@@ -359,25 +474,67 @@ export function Booking() {
                         <p className="text-stone-600">Kies de behandeling die het best bij jou past.</p>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                {services.map((service) => (
-                          <button
-                            key={service.key}
-                            type="button"
-                            onClick={() => setFormData(prev => ({ ...prev, service: service.key }))}
-                            className={`p-4 rounded-xl border-2 transition-all text-left ${
-                              formData.service === service.key
-                                ? 'border-[#6b0f1a] bg-[#6b0f1a]/5'
-                                : 'border-stone-200 bg-white hover:border-[#6b0f1a]'
-                            }`}
-                          >
-                            <div className="font-semibold text-[#1a1a1a]">{service.name}</div>
-                            <div className="flex justify-between items-center mt-2">
-                              <span className="text-xs text-stone-500">{service.duration} min</span>
-                              <span className="font-bold text-[#6b0f1a]">€ {service.price.toFixed(2).replace('.', ',')}</span>
-                            </div>
-                          </button>
-                        ))}
+                                            {/* Categorieën horizontaal scrollbaar met pijltjes */}
+                      <div className="relative">
+                        {/* Pijltjes (alleen op grotere schermen) */}
+                        <button
+                          type="button"
+                          aria-label="Scroll naar links"
+                          onClick={() => scrollCategories('left')}
+                          className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 z-10 h-10 w-10 items-center justify-center rounded-full bg-white shadow-lg border border-stone-200 text-[#6b0f1a] hover:bg-[#faf9f7]"
+                        >
+                          <ChevronLeft className="h-5 w-5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Scroll naar rechts"
+                          onClick={() => scrollCategories('right')}
+                          className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 translate-x-1 z-10 h-10 w-10 items-center justify-center rounded-full bg-white shadow-lg border border-stone-200 text-[#6b0f1a] hover:bg-[#faf9f7]"
+                        >
+                          <ChevronRight className="h-5 w-5" />
+                        </button>
+
+                        <div
+                          ref={categoriesScrollRef}
+                          className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory scroll-smooth [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                        >
+                          {serviceCategories.map((cat) => {
+                            const catServices = cat.keys
+                              .map(k => services.find(s => s.key === k))
+                              .filter((s): s is ServiceType => s !== undefined);
+                            if (catServices.length === 0) return null;
+                            return (
+                              <div
+                                key={cat.key}
+                                className="snap-start shrink-0 w-[85%] sm:w-[360px] rounded-xl border border-stone-200 bg-[#faf9f7] p-4"
+                              >
+                                <h4 className="font-bold text-[#6b0f1a] mb-3 text-sm uppercase tracking-wide">
+                                  {cat.title}
+                                </h4>
+                                <div className="space-y-2">
+                                  {catServices.map((service) => (
+                                    <button
+                                      key={service.key}
+                                      type="button"
+                                      onClick={() => setFormData(prev => ({ ...prev, service: service.key }))}
+                                      className={`w-full p-3 rounded-lg border-2 transition-all text-left ${
+                                        formData.service === service.key
+                                          ? 'border-[#6b0f1a] bg-[#6b0f1a]/5'
+                                          : 'border-stone-200 bg-white hover:border-[#6b0f1a]'
+                                      }`}
+                                    >
+                                      <div className="font-semibold text-[#1a1a1a] text-sm">{service.name}</div>
+                                      <div className="flex justify-between items-center mt-1">
+                                        <span className="text-xs text-stone-500">{service.duration} min</span>
+                                        <span className="font-bold text-[#6b0f1a] text-sm">€ {service.price.toFixed(2).replace('.', ',')}</span>
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -398,7 +555,32 @@ export function Booking() {
                           <Loader2 className="h-6 w-6 animate-spin text-[#6b0f1a]" />
                         </div>
                       ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+                          {/* Geen medewerkersvoorkeur */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData(prev => ({ ...prev, barber_name: ANY_BARBER }));
+                              setSelectedDate(undefined);
+                              setFormData(prev => ({ ...prev, date: '', time: '' }));
+                              setShowWaitlist(false);
+                              setWaitlistSuccess(false);
+                              setOtherBarbersWithSlots([]);
+                              setAnyBarberSlotMap({});
+                            }}
+                            className={`p-6 rounded-xl border-2 transition-all ${
+                              formData.barber_name === ANY_BARBER
+                                ? 'border-[#6b0f1a] bg-[#6b0f1a]/5'
+                                : 'border-stone-200 bg-white hover:border-[#6b0f1a]'
+                            }`}
+                          >
+                            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#d4af37] to-[#b8941f] flex items-center justify-center text-[#1a1a1a] mx-auto mb-3">
+                              <User className="h-8 w-8" />
+                            </div>
+                            <div className="font-bold text-[#1a1a1a] text-center">Geen voorkeur</div>
+                            <div className="text-xs text-stone-500 text-center mt-1">Eerst beschikbare kapper</div>
+                          </button>
+
                           {barbers.map((barber) => (
                             <button
                               key={barber.id}
@@ -410,6 +592,7 @@ export function Booking() {
                                 setShowWaitlist(false);
                                 setWaitlistSuccess(false);
                                 setOtherBarbersWithSlots([]);
+                                setAnyBarberSlotMap({});
                               }}
                               className={`p-6 rounded-xl border-2 transition-all ${
                                 formData.barber_name === barber.name
@@ -465,13 +648,27 @@ export function Booking() {
                         </div>
                       </div>
 
-                      {selectedDate && (
+                                            {selectedDate && (
                         <div className="space-y-4">
                           <p className="text-sm font-semibold text-[#6b0f1a]">
                             📅 {format(selectedDate, 'EEEE d MMMM yyyy', { locale: nl })}
                           </p>
 
-                          {/* Time Slots - Verbeterde weergave */}
+                          {/* Inloopdag-melding: woensdag & donderdag niet op afspraak */}
+                          {isInloopDag(selectedDate) && (
+                            <div className="p-5 bg-[#6b0f1a] text-white rounded-xl shadow-lg">
+                              <div className="flex items-start gap-3">
+                                <MessageCircle className="h-6 w-6 mt-0.5 flex-shrink-0 text-[#d4af37]" />
+                                <div>
+                                  <p className="font-bold text-base sm:text-lg">Vandaag werken wij niet op afspraak</p>
+                                  <p className="text-white/90 text-sm mt-1">Kom gerust zonder afspraak langs</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                                                    {/* Time Slots - alleen op niet-inloopdagen */}
+                          {!isInloopDag(selectedDate) && (
                           <div className="space-y-3">
                             <h4 className="text-sm font-semibold text-stone-700">
                               <Clock className="h-4 w-4 inline mr-1 text-[#6b0f1a]" />
@@ -491,11 +688,15 @@ export function Booking() {
                                     <button
                                       key={slot}
                                       type="button"
-                                      onClick={() => {
-                                        setFormData(prev => ({ ...prev, time: slot }));
-                                        setShowWaitlist(false);
-                                        setWaitlistSuccess(false);
-                                      }}
+                                                                            onClick={() => {
+                                                                              // Bij "geen voorkeur": onthoud welke kapper dit slot vrij heeft
+                                                                              if (formData.barber_name === ANY_BARBER) {
+                                                                                setAssignedBarber(anyBarberSlotMap[slot] || null);
+                                                                              }
+                                                                              setFormData(prev => ({ ...prev, time: slot }));
+                                                                              setShowWaitlist(false);
+                                                                              setWaitlistSuccess(false);
+                                                                            }}
                                       className={`py-1.5 sm:py-2.5 px-1 sm:px-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium transition-all duration-200 ${
                                         isSelected
                                           ? 'bg-[#6b0f1a] text-white shadow-lg shadow-[#6b0f1a]/30 scale-105'
@@ -621,7 +822,7 @@ export function Booking() {
                                   </div>
                                 )}
 
-                                {/* Wachtlijst success */}
+                                                                {/* Wachtlijst success */}
                                 {waitlistSuccess && (
                                   <div className="p-4 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm">
                                     <p className="font-medium">✅ Je staat op de wachtlijst!</p>
@@ -631,6 +832,7 @@ export function Booking() {
                               </div>
                             )}
                           </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -659,30 +861,32 @@ export function Booking() {
                           />
                         </div>
 
-                        <div className="space-y-2">
-                          <Label className="text-stone-700 font-medium">E-mail <span className="text-stone-400 text-xs">(optioneel)</span></Label>
+                                                <div className="space-y-2">
+                          <Label className="text-stone-700 font-medium">E-mail *</Label>
                           <Input
                             type="email"
                             value={formData.email}
                             onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
                             placeholder="jouw@email.nl"
+                            required
                             className="border-stone-300 focus:border-[#6b0f1a] focus:ring-[#6b0f1a]"
                           />
                         </div>
 
                         <div className="space-y-2">
-                          <Label className="text-stone-700 font-medium">Telefoon</Label>
+                          <Label className="text-stone-700 font-medium">Telefoon *</Label>
                           <Input
                             type="tel"
                             value={formData.phone}
                             onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
                             placeholder="06-12345678"
+                            required
                             className="border-stone-300 focus:border-[#6b0f1a] focus:ring-[#6b0f1a]"
                           />
                         </div>
 
                         <div className="space-y-2">
-                          <Label className="text-stone-700 font-medium">Opmerkingen</Label>
+                          <Label className="text-stone-700 font-medium">Opmerkingen <span className="text-stone-400 text-xs">(optioneel)</span></Label>
                           <Textarea
                             value={formData.notes}
                             onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
@@ -817,103 +1021,43 @@ export function Booking() {
             </Card>
           </div>
 
-          {/* Info Sidebar - onder het formulier op mobiel */}
+                    {/* Info Sidebar - onder het formulier op mobiel */}
           <div className="order-2 lg:col-span-1 space-y-4 sm:space-y-6">
-            {/* Contact Info */}
+            {/* Contact & openingstijden zijn te vinden in de footer. Hier alleen een korte verwijzing. */}
             <Card className="shadow-lg border-0 overflow-hidden">
               <div className="bg-[#d4af37] px-4 sm:px-6 py-3 sm:py-4">
                 <h3 className="text-base sm:text-lg font-bold text-[#1a1a1a] flex items-center gap-2">
                   <MessageCircle className="h-4 w-4 sm:h-5 sm:w-5" />
-                  Contact
+                  Vragen of contact?
                 </h3>
               </div>
-              <CardContent className="p-4 sm:p-6 space-y-3 sm:space-y-4">
-                <div className="flex items-start gap-3">
-                  <MapPin className="h-5 w-5 text-[#6b0f1a] mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="font-medium text-[#1a1a1a]">Barbershop Mo&Ma</p>
-                    <p className="text-stone-600 text-sm">W. J. Tuijnstraat 14A</p>
-                    <p className="text-stone-600 text-sm">1131 ZJ Volendam</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Phone className="h-5 w-5 text-[#6b0f1a] flex-shrink-0" />
-                  <a href="tel:0685171198" className="text-[#1a1a1a] hover:text-[#6b0f1a] font-medium">
-                    06-85171198
-                  </a>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Opening Hours */}
-            <Card className="shadow-lg border-0">
-              <CardHeader className="bg-gradient-to-r from-[#6b0f1a] to-[#8b1523] px-4 sm:px-6 py-3 sm:py-4">
-                <CardTitle className="text-white flex items-center gap-2 text-sm sm:text-base">
-                  <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-[#d4af37]" />
-                  Openingstijden
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 sm:p-6 space-y-2 sm:space-y-3">
-                <div className="flex justify-between py-1.5 text-sm">
-                  <span className="text-stone-600">Maandag</span>
-                  <span className="font-medium">10:00 - 18:00</span>
-                </div>
-                <div className="flex justify-between py-1.5 text-sm">
-                  <span className="text-stone-600">Dinsdag</span>
-                  <span className="font-medium">09:00 - 18:00</span>
-                </div>
-                <div className="flex justify-between py-1.5 text-sm">
-                  <span className="text-stone-600">Woensdag</span>
-                  <span className="font-medium">09:00 - 18:00</span>
-                </div>
-                <div className="flex justify-between py-1.5 text-sm">
-                  <span className="text-stone-600">Donderdag</span>
-                  <span className="font-medium">09:00 - 18:00</span>
-                </div>
-                <div className="flex justify-between py-1.5 text-sm">
-                  <span className="text-stone-600">Vrijdag</span>
-                  <span className="font-medium">09:00 - 18:00</span>
-                </div>
-                <div className="flex justify-between py-1.5 text-sm">
-                  <span className="text-stone-600">Zaterdag</span>
-                  <span className="font-medium">08:00 - 17:00</span>
-                </div>
-                <div className="flex justify-between py-1.5 text-sm">
-                  <span className="text-stone-600">Zondag</span>
-                  <span className="text-stone-400">Gesloten</span>
+              <CardContent className="p-4 sm:p-6 space-y-4">
+                <p className="text-stone-600 text-sm">
+                  Onze contactgegevens en openingstijden vind je onderaan de pagina.
+                </p>
+                                <div className="space-y-2">
+                                  <Button
+                                    onClick={() => onNavigate('contact')}
+                                    variant="outline"
+                                    className="w-full justify-start border-[#6b0f1a] text-[#6b0f1a] hover:bg-[#6b0f1a]/5"
+                                  >
+                                    <MapPin className="h-4 w-4 mr-2" />
+                                    Contact &amp; openingstijden
+                                  </Button>
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="w-full justify-start border-[#6b0f1a] text-[#6b0f1a] hover:bg-[#6b0f1a]/5"
+                  >
+                    <a href="tel:0685171198">
+                      <Phone className="h-4 w-4 mr-2" />
+                      Bel ons: 06-85171198
+                    </a>
+                  </Button>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Info Box */}
-            <div className="bg-gradient-to-br from-[#6b0f1a] to-[#8b1523] text-white p-4 sm:p-6 rounded-xl shadow-lg">
-              <h3 className="font-bold mb-3 flex items-center gap-2">
-                <CheckCircle className="h-5 w-5 text-[#d4af37]" />
-                Hoe werkt het?
-              </h3>
-              <ul className="space-y-2 text-sm">
-                <li className="flex items-start gap-2">
-                  <span className="font-bold text-[#d4af37]">1.</span>
-                  <span>Kies je behandeling</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="font-bold text-[#d4af37]">2.</span>
-                  <span>Selecteer je kapper</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="font-bold text-[#d4af37]">3.</span>
-                  <span>Kies datum en tijd</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="font-bold text-[#d4af37]">4.</span>
-                  <span>Vul je gegevens in</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="font-bold text-[#d4af37]">5.</span>
-                  <span>Bevestig je afspraak!</span>
-                </li>
-              </ul>
-            </div>
           </div>
         </div>
       </div>

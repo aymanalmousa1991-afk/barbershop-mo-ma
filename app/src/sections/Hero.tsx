@@ -134,12 +134,12 @@ export function Hero({ onNavigate }: HeroProps) {
                   <span className="text-stone-500">{content.opening_zo || 'Gesloten'}</span>
                 </div>
               </div>
-              <div className="mt-6 pt-6 border-t border-white/10">
+                            <div className="mt-6 pt-6 border-t border-white/10">
                 <p className="text-sm text-stone-400">
-                  <span className="text-[#d4af37]">Ma, Di, Vr, Za:</span> {content.opening_afspraak || 'uitsluitend op afspraak'}
+                  {content.opening_afspraak || 'Ma, Di, Vr, Za: uitsluitend op afspraak'}
                 </p>
                 <p className="text-sm text-stone-400 mt-1">
-                  <span className="text-[#d4af37]">Wo, Do:</span> {content.opening_inloop || 'Inloop'}
+                  {content.opening_inloop || 'Wo, Do: Inloop'}
                 </p>
               </div>
             </div>

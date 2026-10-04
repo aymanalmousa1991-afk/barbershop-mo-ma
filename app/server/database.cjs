@@ -184,15 +184,26 @@ db.serialize(() => {
     ["opening_di_vr", "09:00 - 18:00"],
     ["opening_za", "08:00 - 17:00"],
     ["opening_zo", "Gesloten"],
-    ["opening_afspraak", "uitsluitend op afspraak"],
-    ["opening_inloop", "Inloop"],
+        ["opening_afspraak", "Ma, Di, Vr, Za: uitsluitend op afspraak"],
+    ["opening_inloop", "Wo, Do: Inloop"],
     ["quality_text", "Bij Mo&Ma staan kwaliteit en service voorop. Alle behandelingen worden uitgevoerd met professionele producten."],
     ["about_title", "Over Ons"],
     ["about_text", "Welkom bij Barbershop Mo & Ma, dé plek in Volendam voor de beste herenkapsels en baardverzorging. Wij, Mo en Ma, zijn gepassioneerde barbiers met jarenlange ervaring in het vak. Onze missie is om elke klant een unieke en persoonlijke ervaring te bieden, waarbij kwaliteit en klanttevredenheid voorop staan.\n\nBij Barbershop Mo & Ma geloven we in het creëren van een vriendelijke sfeer waar iedereen zich welkom voelt en waar altijd een bakje koffie voor u klaar staat. Of je nu komt voor een klassieke scheerbeurt, een trendy kapsel of een uitgebreide baardbehandeling, wij zorgen ervoor dat je er altijd op je best uitziet.\n\nKom langs bij Barbershop Mo & Ma en ervaar zelf waarom wij de favoriete barbershop van Edam-Volendam zijn en laat ons je helpen om je look naar een hoger niveau te tillen."]
   ];
-  for (const [section, content] of seedHomeContent) {
+    for (const [section, content] of seedHomeContent) {
     db.run("INSERT OR IGNORE INTO home_content (section, content) VALUES (?, ?)", [section, content]);
   }
+
+  // Migratie: oudere databases hadden alleen de waarde (zonder de dagen).
+  // Zet deze om naar de volledige regel, zodat dagen + waarde samen beheerbaar zijn.
+  db.run(
+    "UPDATE home_content SET content = 'Ma, Di, Vr, Za: ' || content WHERE section = 'opening_afspraak' AND content NOT LIKE '%:%'",
+    (err) => { if (err) console.error('Migratie opening_afspraak mislukt:', err); }
+  );
+  db.run(
+    "UPDATE home_content SET content = 'Wo, Do: ' || content WHERE section = 'opening_inloop' AND content NOT LIKE '%:%'",
+    (err) => { if (err) console.error('Migratie opening_inloop mislukt:', err); }
+  );
 
   // Create or update admin user
   const adminPasswordHash = bcrypt.hashSync('Barber123!', 10);

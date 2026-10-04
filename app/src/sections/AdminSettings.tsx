@@ -495,8 +495,8 @@ function HomeContentEditor() {
     { key: 'opening_di_vr', label: 'Openingstijden Di-Vrij', type: 'text', default: '09:00 - 18:00' },
     { key: 'opening_za', label: 'Openingstijden Zaterdag', type: 'text', default: '08:00 - 17:00' },
     { key: 'opening_zo', label: 'Openingstijden Zondag', type: 'text', default: 'Gesloten' },
-    { key: 'opening_afspraak', label: 'Op afspraak tekst', type: 'text', default: 'Ma, Di, Vr, Za: uitsluitend op afspraak' },
-    { key: 'opening_inloop', label: 'Inloop tekst', type: 'text', default: 'Wo, Do: Inloop' },
+        { key: 'opening_afspraak', label: 'Op afspraak (dagen + tekst)', type: 'text', default: 'Ma, Di, Vr, Za: uitsluitend op afspraak' },
+    { key: 'opening_inloop', label: 'Inloop (dagen + tekst)', type: 'text', default: 'Wo, Do: Inloop' },
     { key: 'welcome_text', label: 'Welkomsttekst Home', type: 'textarea', default: 'Welkom bij Barbershop Mo&Ma, dé mannenkapper van Edam-Volendam.' },
   ];
 
