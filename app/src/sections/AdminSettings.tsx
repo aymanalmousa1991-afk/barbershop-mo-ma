@@ -1,11 +1,11 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Plus, X, Save, Trash2, Calendar } from 'lucide-react';
+import { Loader2, Plus, X, Save, Trash2, Calendar, Coffee } from 'lucide-react';
 import { toast } from 'sonner';
 import { BarberManagement } from './BarberManagement';
 
@@ -169,15 +169,15 @@ export function AdminSettings() {
           <TabsTrigger value="services" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
             Diensten
           </TabsTrigger>
-          <TabsTrigger value="absences" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
+                    <TabsTrigger value="absences" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
             Afwezigheid
           </TabsTrigger>
-                    <TabsTrigger value="barbers" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
+          <TabsTrigger value="booking" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
+            Boekingen
+          </TabsTrigger>
+                                        <TabsTrigger value="barbers" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
             Kappers
           </TabsTrigger>
-                    <TabsTrigger value="waitlist" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
-                      Wachtlijst
-                    </TabsTrigger>
         </TabsList>
 
         {/* HOME CONTENT TAB */}
@@ -328,15 +328,15 @@ export function AdminSettings() {
           </div>
         </TabsContent>
 
-                {/* BARBERS TAB */}
+                        {/* BOOKING SETTINGS TAB */}
+        <TabsContent value="booking">
+          <BookingSettings />
+        </TabsContent>
+
+                                {/* BARBERS TAB */}
         <TabsContent value="barbers">
           <BarberManagement />
         </TabsContent>
-
-                {/* WAITLIST TAB */}
-                <TabsContent value="waitlist">
-                  <WaitlistManagement />
-                </TabsContent>
       </Tabs>
 
       {/* Service Dialog */}
@@ -497,7 +497,7 @@ function HomeContentEditor() {
     { key: 'opening_zo', label: 'Openingstijden Zondag', type: 'text', default: 'Gesloten' },
         { key: 'opening_afspraak', label: 'Op afspraak (dagen + tekst)', type: 'text', default: 'Ma, Di, Vr, Za: uitsluitend op afspraak' },
     { key: 'opening_inloop', label: 'Inloop (dagen + tekst)', type: 'text', default: 'Wo, Do: Inloop' },
-    { key: 'welcome_text', label: 'Welkomsttekst Home', type: 'textarea', default: 'Welkom bij Barbershop Mo&Ma, dé mannenkapper van Edam-Volendam.' },
+    { key: 'welcome_text', label: 'Welkomsttekst Home', type: 'textarea', default: 'Welkom bij Barbershop Mo&Ma, d� mannenkapper van Edam-Volendam.' },
   ];
 
     return (
@@ -581,45 +581,60 @@ function HomeContentEditor() {
         );
       }
 
-function WaitlistManagement() {
-  const [entries, setEntries] = useState<any[]>([]);
+function BookingSettings() {
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [weeksAhead, setWeeksAhead] = useState('8');
+  const [breakEnabled, setBreakEnabled] = useState(false);
+  const [breakStart, setBreakStart] = useState('12:30');
+  const [breakEnd, setBreakEnd] = useState('13:00');
   const token = localStorage.getItem('token');
 
-  const loadWaitlist = async () => {
-    setLoading(true);
+  const loadSettings = async () => {
     try {
-              const res = await fetch(`${API_URL}/admin/waitlist`, {
-                headers: { Authorization: `Bearer ${token}` }
-              });
-              const data = await res.json();
-              if (data.success) setEntries(data.data);
+      const res = await fetch(`${API_URL}/home-content`);
+      const data = await res.json();
+      if (data.success) {
+        const c = data.data || {};
+        setWeeksAhead(c.booking_weeks_ahead || '8');
+        setBreakEnabled(c.break_enabled === '1' || c.break_enabled === 'true');
+        setBreakStart(c.break_start || '12:30');
+        setBreakEnd(c.break_end || '13:00');
+      }
     } catch (err) {
-              console.error(err);
+      console.error(err);
     } finally {
-              setLoading(false);
+      setLoading(false);
     }
   };
 
-  useEffect(() => { loadWaitlist(); }, []);
+  useEffect(() => { loadSettings(); }, []);
 
-  const markContacted = async (id: number) => {
-    await fetch(`${API_URL}/admin/waitlist/${id}/contacted`, {
-              method: 'PUT',
-              headers: { Authorization: `Bearer ${token}` }
+  const saveSetting = async (section: string, content: string) => {
+    await fetch(`${API_URL}/admin/home-content`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ section, content }),
     });
-    await loadWaitlist();
-    toast.success('Gemarkeerd als gecontacteerd');
   };
 
-  const removeEntry = async (id: number) => {
-    if (!confirm('Verwijder deze wachtlijst vermelding?')) return;
-    await fetch(`${API_URL}/admin/waitlist/${id}`, {
-              method: 'DELETE',
-              headers: { Authorization: `Bearer ${token}` }
-    });
-    await loadWaitlist();
-    toast.success('Verwijderd');
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await Promise.all([
+        saveSetting('booking_weeks_ahead', String(parseInt(weeksAhead, 10) || 8)),
+        saveSetting('break_enabled', breakEnabled ? '1' : '0'),
+        saveSetting('break_start', breakStart),
+        saveSetting('break_end', breakEnd),
+      ]);
+      toast.success('Boekingsinstellingen opgeslagen!');
+      await loadSettings();
+    } catch (err) {
+      console.error(err);
+      toast.error('Opslaan mislukt');
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading) {
@@ -627,80 +642,74 @@ function WaitlistManagement() {
   }
 
   return (
-    <Card className="border-0 shadow-lg">
-              <CardHeader className="bg-gradient-to-r from-[#6b0f1a] to-[#8b1523]">
-                <CardTitle className="text-white flex items-center gap-2">
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-                  Wachtlijst
-                  {entries.filter(e => e.status === 'waiting').length > 0 && (
-                    <span className="ml-2 bg-amber-400 text-[#1a1a1a] text-xs font-bold px-2 py-0.5 rounded-full">
-                      {entries.filter(e => e.status === 'waiting').length} wachtend
-                    </span>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                {entries.length === 0 ? (
-                  <div className="text-center py-8 text-stone-500">Niemand op de wachtlijst</div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-left text-stone-500">
-                          <th className="pb-3 pr-3">Naam</th>
-                          <th className="pb-3 pr-3">Telefoon</th>
-                          <th className="pb-3 pr-3">Kapper</th>
-                          <th className="pb-3 pr-3">Datum</th>
-                          <th className="pb-3 pr-3">Status</th>
-                          <th className="pb-3 pr-3">Notities</th>
-                          <th className="pb-3"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {entries.map((entry) => (
-                          <tr key={entry.id} className="border-b border-stone-100 hover:bg-stone-50">
-                            <td className="py-3 pr-3 font-medium">
-                              {entry.name}
-                              {entry.email && <p className="text-xs text-stone-400">{entry.email}</p>}
-                            </td>
-                            <td className="py-3 pr-3">{entry.phone}</td>
-                            <td className="py-3 pr-3">{entry.preferred_barber || '-'}</td>
-                            <td className="py-3 pr-3">{entry.preferred_date || '-'}</td>
-                            <td className="py-3 pr-3">
-                              {entry.contacted ? (
-                                <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-medium">Gecontacteerd</span>
-                              ) : (
-                                <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs font-medium">Wachtend</span>
-                              )}
-                            </td>
-                            <td className="py-3 pr-3 text-xs text-stone-500 max-w-[150px] truncate">{entry.notes || '-'}</td>
-                            <td className="py-3">
-                              <div className="flex gap-2">
-                                {!entry.contacted && (
-                                  <Button variant="outline" size="sm" onClick={() => markContacted(entry.id)} className="text-green-600 border-green-600">
-                                    bel terug
-                                  </Button>
-                                )}
-                                <Button variant="ghost" size="sm" onClick={() => removeEntry(entry.id)} className="text-red-500">
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </CardContent>
-        </Card>
+    <div className="grid md:grid-cols-2 gap-6">
+      {/* Weken vooruit */}
+      <Card className="border-0 shadow-lg">
+        <CardHeader className="bg-gradient-to-r from-[#6b0f1a] to-[#8b1523]">
+          <CardTitle className="text-white flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            Hoe ver vooruit boeken
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6 space-y-4">
+          <p className="text-sm text-stone-600">
+            Stel in hoeveel weken vooruit klanten een afspraak mogen maken.
+          </p>
+          <div>
+            <Label>Aantal weken vooruit</Label>
+            <Input
+              type="number"
+              min={1}
+              max={52}
+              value={weeksAhead}
+              onChange={(e) => setWeeksAhead(e.target.value)}
+              className="mt-1"
+            />
+            <p className="text-xs text-stone-400 mt-1">Bijv. 8 = klanten kunnen max. 8 weken vooruit plannen.</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Vaste pauze */}
+      <Card className="border-0 shadow-lg">
+        <CardHeader className="bg-gradient-to-r from-[#6b0f1a] to-[#8b1523]">
+          <CardTitle className="text-white flex items-center gap-2">
+            <Coffee className="h-5 w-5" />
+            Vaste pauze
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6 space-y-4">
+          <p className="text-sm text-stone-600">
+            Deze pauze wordt automatisch op <strong>alle werkdagen</strong> herhaald voor alle kappers, totdat je deze aanpast.
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="breakEnabled"
+              checked={breakEnabled}
+              onChange={(e) => setBreakEnabled(e.target.checked)}
+            />
+            <Label htmlFor="breakEnabled">Vaste pauze actief</Label>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Pauze van</Label>
+              <Input type="time" value={breakStart} onChange={(e) => setBreakStart(e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label>Pauze tot</Label>
+              <Input type="time" value={breakEnd} onChange={(e) => setBreakEnd(e.target.value)} className="mt-1" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="md:col-span-2">
+        <Button onClick={handleSave} disabled={saving} className="w-full bg-[#6b0f1a]">
+          {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Opslaan...</> : <><Save className="h-4 w-4 mr-2" />Instellingen opslaan</>}
+        </Button>
+            </div>
+    </div>
   );
 }
-
-
-
-
-
-
-
 

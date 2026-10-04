@@ -186,6 +186,10 @@ db.serialize(() => {
     ["opening_zo", "Gesloten"],
         ["opening_afspraak", "Ma, Di, Vr, Za: uitsluitend op afspraak"],
     ["opening_inloop", "Wo, Do: Inloop"],
+    ["booking_weeks_ahead", "8"],
+    ["break_enabled", "0"],
+    ["break_start", "12:30"],
+    ["break_end", "13:00"],
     ["quality_text", "Bij Mo&Ma staan kwaliteit en service voorop. Alle behandelingen worden uitgevoerd met professionele producten."],
     ["about_title", "Over Ons"],
     ["about_text", "Welkom bij Barbershop Mo & Ma, dé plek in Volendam voor de beste herenkapsels en baardverzorging. Wij, Mo en Ma, zijn gepassioneerde barbiers met jarenlange ervaring in het vak. Onze missie is om elke klant een unieke en persoonlijke ervaring te bieden, waarbij kwaliteit en klanttevredenheid voorop staan.\n\nBij Barbershop Mo & Ma geloven we in het creëren van een vriendelijke sfeer waar iedereen zich welkom voelt en waar altijd een bakje koffie voor u klaar staat. Of je nu komt voor een klassieke scheerbeurt, een trendy kapsel of een uitgebreide baardbehandeling, wij zorgen ervoor dat je er altijd op je best uitziet.\n\nKom langs bij Barbershop Mo & Ma en ervaar zelf waarom wij de favoriete barbershop van Edam-Volendam zijn en laat ons je helpen om je look naar een hoger niveau te tillen."]

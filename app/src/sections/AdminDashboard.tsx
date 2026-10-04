@@ -10,7 +10,7 @@ import {
   LogOut, Calendar, Calendar as CalendarIcon, Clock, Mail, Phone, FileText,
   Trash2, Loader2, AlertTriangle, CheckCircle, TrendingUp,
   Scissors, Users, User, ChevronLeft, ChevronRight,
-  Settings, ArrowRight, KeyRound, Plus
+    Settings, ArrowRight, KeyRound, Plus, ClipboardList, RefreshCw
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { format, parseISO, isToday, isFuture } from 'date-fns';
@@ -19,6 +19,7 @@ import type { Appointment } from '@/types';
 import { AdminSettings } from './AdminSettings';
 import { AdminPhotoManagement } from './AdminPhotoManagement';
 import { AdminReports } from './AdminReports';
+import { WaitlistManagement } from './WaitlistManagement';
 import { PasswordChangeDialog } from './PasswordChangeDialog';
 
 interface AdminDashboardProps {
@@ -59,18 +60,16 @@ function getBarberColor(barberName: string) {
   return barberColors[barberName?.toLowerCase()] || defaultBarberColor;
 }
 
-const timeSlots = [
-  '08:00','08:15','08:30','08:45',
-  '09:00','09:15','09:30','09:45',
-  '10:00','10:15','10:30','10:45',
-  '11:00','11:15','11:30','11:45',
-  '12:00','12:15','12:30','12:45',
-  '13:00','13:15','13:30','13:45',
-  '14:00','14:15','14:30','14:45',
-  '15:00','15:15','15:30','15:45',
-  '16:00','16:15','16:30','16:45',
-  '17:00','17:15','17:30','17:45'
-];
+// Tijdlijn in blokjes van 5 minuten (08:00 - 17:55)
+const timeSlots = (() => {
+  const slots: string[] = [];
+  for (let h = 8; h < 18; h++) {
+    for (let m = 0; m < 60; m += 5) {
+      slots.push(String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'));
+    }
+  }
+  return slots;
+})();
 
 export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   const { logout, user } = useAuth();
@@ -144,8 +143,8 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     }
   };
 
-  const fetchData = async () => {
-    setIsLoading(true);
+    const fetchData = async (silent = false) => {
+    if (!silent) setIsLoading(true);
     setError(null);
     try {
       const token = localStorage.getItem('token');
@@ -160,13 +159,38 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       setStats(statsResult.data?.stats || statsResult.stats);
     } catch (err) {
       console.error('Error fetching data:', err);
-      setError('Kon gegevens niet laden.');
+      if (!silent) setError('Kon gegevens niet laden.');
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
+  // Handmatig verversen (via de knop) — met korte spinner-feedback
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchData(true);
+    setTimeout(() => setIsRefreshing(false), 400);
+  };
+
   useEffect(() => { fetchData(); fetchBarbers(); fetchServices(); }, []);
+
+  // Automatisch verversen: elke 30s stil op de achtergrond + bij terugkeren naar het tabblad
+  useEffect(() => {
+    const interval = setInterval(() => { fetchData(true); }, 30000);
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchData(true);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, []);
 
   const handleDelete = async () => {
     if (!appointmentToDelete) return;
@@ -298,9 +322,12 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* TABS */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
-          <TabsList className="bg-stone-100">
+                    <TabsList className="bg-stone-100">
             <TabsTrigger value="dashboard" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
               Dashboard
+            </TabsTrigger>
+            <TabsTrigger value="waitlist" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
+              <ClipboardList className="h-4 w-4 mr-1" />Wachtlijst
             </TabsTrigger>
             <TabsTrigger value="photos" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
               Foto beheer
@@ -379,9 +406,13 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
             {activeView === 'agenda' ? (
               <>
                 <div className="flex items-center justify-between gap-2 mb-4 bg-white rounded-lg shadow-lg p-4 flex-wrap">
-                  <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => setAddDialogOpen(true)} className="gap-2 border-[#6b0f1a] text-[#6b0f1a] hover:bg-[#6b0f1a] hover:text-white">
                       <Plus className="h-4 w-4" />Nieuwe Afspraak
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}
+                      className="gap-2 border-[#6b0f1a] text-[#6b0f1a] hover:bg-[#6b0f1a] hover:text-white">
+                      <RefreshCw className={'h-4 w-4 ' + (isRefreshing ? 'animate-spin' : '')} />Verversen
                     </Button>
                                         <select className="p-2 border rounded text-sm bg-white" value={barberFilter} onChange={(e) => setBarberFilter(e.target.value)}>
                       <option value="">Alle kappers</option>
@@ -418,47 +449,67 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                 </div>
 
                 <div className="overflow-x-auto bg-white rounded-lg shadow-lg">
-                  <table className="w-full min-w-[500px]">
+                                    <table className="w-full min-w-[500px] table-fixed">
                     <thead>
                       <tr>
-                        <th className="sticky left-0 z-10 p-2 text-xs font-medium text-stone-500 border-b bg-white text-left w-16">Tijd</th>
+                        <th className="sticky left-0 z-10 px-2 py-2 text-xs font-medium text-stone-500 border-b bg-white text-left w-16">Tijd</th>
                         {barbersAgenda.filter((b: any) => !barberFilter || b.key === barberFilter).map(({ key, name, color }: any) => (
-                          <th key={key} className={'p-2 text-center text-sm font-bold text-white border-b ' + color.bg}>{name}</th>
+                          <th key={key} className={'px-2 py-2 text-center text-sm font-bold text-white border-b ' + color.bg}>{name}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {timeSlots.filter(s => { const h=parseInt(s.split(':')[0]); return h>=8 && h<18; }).map((time) => {
+                      {timeSlots.map((time) => {
                         const filteredBarbers = barbersAgenda.filter((b: any) => !barberFilter || b.key === barberFilter);
+                        const [th, tm] = time.split(':').map(Number);
+                        const slotMin = th * 60 + tm;
+                        const isHour = tm === 0;
+                        const isHalf = tm === 30;
+                        const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+                        const fmt = (min: number) => String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0');
                         return (
-                          <tr key={time} className="hover:bg-stone-50 transition-colors">
-                            <td className="sticky left-0 z-10 p-2 text-xs font-medium text-stone-500 border-b bg-white">{time}</td>
-                            {filteredBarbers.map(({ key, name, color }: any) => {
-                              const apt = appointmentsByBarber(key).find(a => a.time === time);
-                              const isContinuation = !apt && appointmentsByBarber(key).some(a => {
+                          <tr key={time} className={(isHour ? 'border-t border-stone-300' : '')}>
+                            <td className={'sticky left-0 z-10 px-2 text-xs border-b bg-white ' + (isHour ? 'font-bold text-stone-700' : 'text-stone-400')}
+                                style={{ height: isHour ? 22 : 16 }}>
+                              {isHour || isHalf ? time : ''}
+                            </td>
+                            {filteredBarbers.map(({ key, color }: any) => {
+                              const apts = appointmentsByBarber(key);
+                              // Afspraak die op dit tijdstip START
+                              const apt = apts.find(a => a.time === time);
+                              // Is deze 5-min cel een vervolg (binnen de duur) van een afspraak?
+                              const continuation = !apt && apts.some(a => {
                                 const dur = serviceMap[a.service]?.duration || 30;
-                                const [sh,sm] = a.time.split(':').map(Number);
-                                const [h,m] = time.split(':').map(Number);
-                                const slotMin = h*60+m;
-                                return slotMin > (sh*60+sm) && slotMin < (sh*60+sm+dur);
+                                const s = toMin(a.time);
+                                return slotMin > s && slotMin < s + dur;
                               });
-                              if (isContinuation) return <td key={key} className={'p-0 border-b border-l-4 bg-stone-50/50 ' + color.border}></td>;
-                              if (apt) return (
-                                <td key={key} className={'p-1 border-b border ' + color.light + ' ' + color.border}>
-                                  <div className="group relative">
-                                    <p className={'text-xs font-semibold truncate ' + color.text}>{apt.name}</p>
-                                    <p className="text-[10px] text-stone-500 truncate">{serviceMap[apt.service]?.name || apt.service}</p>
-                                    <div className="absolute top-0 right-0 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded p-0.5">
-                                      <button onClick={()=>{setAppointmentToMove(apt);setMoveDate(apt.date);setMoveTime(apt.time);setMoveDialogOpen(true);}} className="text-blue-500 hover:text-blue-700 p-0.5"><ArrowRight className="h-3 w-3"/></button>
-                                      <button onClick={()=>{setAppointmentToDelete(apt);setDeleteDialogOpen(true);}} className="text-red-500 hover:text-red-700 p-0.5"><Trash2 className="h-3 w-3"/></button>
+                              if (apt) {
+                                const dur = serviceMap[apt.service]?.duration || 30;
+                                const endMin = toMin(apt.time) + dur;
+                                const spanRows = Math.max(1, Math.round(dur / 5));
+                                return (
+                                  <td key={key} rowSpan={spanRows}
+                                      className={'align-top px-1 pt-0.5 border-l-4 ' + color.light + ' ' + color.border}>
+                                    <div className="group relative h-full">
+                                      <p className={'text-[11px] font-bold leading-tight truncate ' + color.text}>{apt.name}</p>
+                                      <p className="text-[10px] font-semibold text-stone-600 leading-tight">
+                                        {apt.time}&nbsp;&ndash;&nbsp;{fmt(endMin)}
+                                      </p>
+                                      <p className="text-[10px] text-stone-400 leading-tight truncate">{serviceMap[apt.service]?.name || apt.service}</p>
+                                      <div className="absolute top-0 right-0 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded p-0.5">
+                                        <button onClick={()=>{setAppointmentToMove(apt);setMoveDate(apt.date);setMoveTime(apt.time);setMoveDialogOpen(true);}} className="text-blue-500 hover:text-blue-700 p-0.5"><ArrowRight className="h-3 w-3"/></button>
+                                        <button onClick={()=>{setAppointmentToDelete(apt);setDeleteDialogOpen(true);}} className="text-red-500 hover:text-red-700 p-0.5"><Trash2 className="h-3 w-3"/></button>
+                                      </div>
                                     </div>
-                                  </div>
-                                </td>
-                              );
+                                  </td>
+                                );
+                              }
+                              // Vervolcellen hoeven niks te tonen (de rowSpan dekt ze al)
+                              if (continuation) return null;
                               return (
-                                <td key={key} className="p-1 border-b border-stone-100">
-                                  <button onClick={()=>{setAddBarber(key);setAddTime(time);setAddDialogOpen(true);}} className="w-full flex items-center justify-center group min-h-[36px]">
-                                    <span className="text-stone-200 group-hover:text-stone-400 opacity-0 group-hover:opacity-100">+</span>
+                                <td key={key} className={'px-1 border-b border-stone-100 ' + (isHour ? 'border-t border-stone-300' : '')}>
+                                  <button onClick={()=>{setAddBarber(key);setAddTime(time);setAddDialogOpen(true);}} className="w-full flex items-center justify-center group" style={{ height: isHour ? 22 : 16 }}>
+                                    <span className="text-stone-200 group-hover:text-stone-400 opacity-0 group-hover:opacity-100 text-xs leading-none">+</span>
                                   </button>
                                 </td>
                               );
@@ -512,6 +563,10 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+                    <TabsContent value="waitlist">
+            <WaitlistManagement />
           </TabsContent>
 
           <TabsContent value="photos">

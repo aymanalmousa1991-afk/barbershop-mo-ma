@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import { format, addDays, parseISO, startOfDay } from 'date-fns';
 import { nl } from 'date-fns/locale';
+import { useHomeContent } from '@/hooks/useHomeContent';
+import { toast } from 'sonner';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -70,6 +72,15 @@ const serviceCategories: { key: string; title: string; keys: string[] }[] = [
 ];
 
 export function Booking({ onNavigate }: BookingProps) {
+  const { content: homeContent } = useHomeContent();
+    // Hoeveel weken vooruit klanten mogen boeken (instelbaar via admin, default 8)
+  const weeksAhead = Math.max(1, parseInt(homeContent.booking_weeks_ahead || '8', 10) || 8);
+  // Laatste dag die klanten mogen kiezen
+  const maxBookableDate = (() => {
+    const d = startOfDay(new Date());
+    d.setDate(d.getDate() + weeksAhead * 7);
+    return d;
+  })();
   // Step: 1=Service, 2=Barber, 3=DateTime, 4=ContactInfo, 5=Review
   const [currentStep, setCurrentStep] = useState(1);
   
@@ -276,7 +287,12 @@ export function Booking({ onNavigate }: BookingProps) {
     }
   };
 
-  const handleDateSelect = (date: Date | undefined) => {
+    const handleDateSelect = (date: Date | undefined) => {
+    // Als de datum te ver in de toekomst ligt: blokkeren + duidelijke melding
+    if (date && startOfDay(date) > maxBookableDate) {
+      toast.error(`Je kunt maximaal ${weeksAhead} weken vooruit een afspraak maken.`);
+      return;
+    }
     setSelectedDate(date);
     if (date) {
       const dateStr = format(date, 'yyyy-MM-dd');
@@ -380,8 +396,8 @@ export function Booking({ onNavigate }: BookingProps) {
 
     const isDateDisabled = (date: Date) => {
       const today = startOfDay(new Date());
-      // Alleen zondag blokkeren (dag 0) - zaterdag (dag 6) is open 08:00-17:00
-      return date < today || date.getDay() === 0;
+      // Zondag gesloten + dagen voorbij de instelbare limiet blokkeren
+      return date < today || date.getDay() === 0 || date > maxBookableDate;
     };
 
     // Inloopdagen: woensdag (3) en donderdag (4) werken wij niet op afspraak
@@ -627,11 +643,11 @@ export function Booking({ onNavigate }: BookingProps) {
                         <div className="flex justify-center">
                           <Calendar
                             mode="single"
-                            selected={selectedDate}
+                                                        selected={selectedDate}
                             onSelect={handleDateSelect}
                             disabled={isDateDisabled}
                             fromDate={new Date()}
-                            toDate={addDays(new Date(), 60)}
+                            toDate={maxBookableDate}
                             locale={nl}
                             className="mx-auto"
                             classNames={{

@@ -356,10 +356,10 @@ app.get('/api/appointments/available-slots', (req, res) => {
     const dateObj = new Date(date + "T12:00:00");
     const dayOfWeek = dateObj.getDay();
     const todayHours = openingHours[dayOfWeek];
-    const allSlots = [];
+        const allSlots = [];
     if (todayHours) {
       for (let h = todayHours.open; h < todayHours.close; h++) {
-        for (let m = 0; m < 60; m += 15) {
+        for (let m = 0; m < 60; m += 5) {
           allSlots.push(String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"));
         }
       }
@@ -424,7 +424,7 @@ app.get('/api/appointments/available-slots', (req, res) => {
 
                 const bookedTimes = rows.map(row => row.time);
 
-        // Check afwezigheid voor deze kapper op deze datum
+                // Check afwezigheid voor deze kapper op deze datum
         db.all(
           'SELECT * FROM barber_absences WHERE barber_name = ? AND date = ?',
           [barber_name, date],
@@ -448,20 +448,41 @@ app.get('/api/appointments/available-slots', (req, res) => {
               }
             }
 
-            // Verwijder geboekte en geblokkeerde tijden
-            const unavailableSlots = [...new Set([...bookedTimes, ...blockedTimes, ...Array.from(blockedSlotsSet)])];
-            const availableSlots = allSlots.filter(slot => !unavailableSlots.includes(slot));
+            // Vaste pauze (indien ingesteld) geldt voor alle kappers op alle werkdagen
+            db.all(
+              "SELECT section, content FROM home_content WHERE section IN ('break_enabled','break_start','break_end')",
+              (err3, breakRows) => {
+                const breakCfg = {};
+                (breakRows || []).forEach(r => { breakCfg[r.section] = r.content; });
+                                const breakEnabled = breakCfg.break_enabled === '1' || breakCfg.break_enabled === 'true';
+                if (breakEnabled && breakCfg.break_start && breakCfg.break_end) {
+                  const bStart = toMin(breakCfg.break_start);
+                  const bEnd = toMin(breakCfg.break_end);
+                  for (const slot of allSlots) {
+                    const slotMin = toMin(slot);
+                    // Blokkeer het slot als de nieuwe afspraak (slotMin + duur) OVERLAPT met de pauze
+                    if (slotMin < bEnd && slotMin + requestedDuration > bStart) {
+                      blockedTimes.push(slot);
+                    }
+                  }
+                }
 
-            res.json({
-              success: true,
-              data: {
-                date,
-                barber_name,
-                availableSlots,
-                bookedSlots: bookedTimes,
-                blockedSlots: blockedTimes
+                // Verwijder geboekte en geblokkeerde tijden
+                const unavailableSlots = [...new Set([...bookedTimes, ...blockedTimes, ...Array.from(blockedSlotsSet)])];
+                const availableSlots = allSlots.filter(slot => !unavailableSlots.includes(slot));
+
+                res.json({
+                  success: true,
+                  data: {
+                    date,
+                    barber_name,
+                    availableSlots,
+                    bookedSlots: bookedTimes,
+                    blockedSlots: blockedTimes
+                  }
+                });
               }
-            });
+            );
           }
         );
       }
@@ -513,7 +534,7 @@ app.post('/api/appointments', (req, res) => {
       });
     }
 
-    // === VALIDATIE: Check openingstijden voor deze dag ===
+        // === VALIDATIE: Check openingstijden voor deze dag ===
     const openingHours = {
       1: { open: 10, close: 18 },
       2: { open: 9, close: 18 },
@@ -533,13 +554,30 @@ app.post('/api/appointments', (req, res) => {
       });
     }
 
-    const hour = parseInt(time.split(":")[0]);
+        const hour = parseInt(time.split(":")[0]);
     if (hour < todayHours.open) {
       return res.status(400).json({
         success: false,
         error: "Onze openingstijd op deze dag is " + String(todayHours.open).padStart(2, "0") + ":00. Kies een later tijdstip."
       });
     }
+
+    // === VALIDATIE: Mag niet verder dan het ingestelde aantal weken vooruit ===
+    db.get("SELECT content FROM home_content WHERE section = 'booking_weeks_ahead'", (errW, rowW) => {
+      if (errW) {
+        console.error('Database error:', errW);
+        return res.status(500).json({ success: false, error: 'Database fout' });
+      }
+      const weeksAhead = Math.max(1, parseInt((rowW && rowW.content) || '8', 10) || 8);
+      const maxDate = new Date();
+      maxDate.setDate(maxDate.getDate() + weeksAhead * 7);
+      maxDate.setHours(23, 59, 59, 999);
+      if (appointmentDate > maxDate) {
+        return res.status(400).json({
+          success: false,
+          error: `Je kunt maximaal ${weeksAhead} weken vooruit een afspraak maken. Kies een eerdere datum.`
+        });
+      }
 
         // === VALIDATIE: Check overlap met bestaande afspraken (rekening houdend met duur) ===
     const newDuration = getDurationByKey(service || "", 30);
@@ -586,7 +624,7 @@ app.post('/api/appointments', (req, res) => {
               return res.status(500).json({ success: false, error: 'Database fout' });
             }
 
-            if (absences && absences.length > 0) {
+                        if (absences && absences.length > 0) {
               for (const absence of absences) {
                 if (absence.is_full_day) {
                   return res.status(400).json({
@@ -604,6 +642,25 @@ app.post('/api/appointments', (req, res) => {
                 }
               }
             }
+
+            // Vaste pauze (indien ingesteld) geldt voor alle kappers: blokkeer boeking in de pauze
+            db.all(
+              "SELECT section, content FROM home_content WHERE section IN ('break_enabled','break_start','break_end')",
+              (errB, breakRows) => {
+                const breakCfg = {};
+                (breakRows || []).forEach(r => { breakCfg[r.section] = r.content; });
+                                const breakEnabled = breakCfg.break_enabled === '1' || breakCfg.break_enabled === 'true';
+                if (breakEnabled && breakCfg.break_start && breakCfg.break_end) {
+                  const bStart = parseInt(breakCfg.break_start.split(":")[0]) * 60 + parseInt(breakCfg.break_start.split(":")[1]);
+                  const bEnd = parseInt(breakCfg.break_end.split(":")[0]) * 60 + parseInt(breakCfg.break_end.split(":")[1]);
+                  // Blokkeer als de afspraak (newStartMin t/m newEndMin) OVERLAPT met de pauze
+                  if (newStartMin < bEnd && newEndMin > bStart) {
+                    return res.status(400).json({
+                      success: false,
+                      error: `Dit tijdstip overlapt met de pauze (${breakCfg.break_start} - ${breakCfg.break_end}). Kies een ander tijdstip.`
+                    });
+                  }
+                }
 
             // Get barberId
             db.get('SELECT id FROM barbers WHERE name = ?', [barber_name], (err3, barber) => {
@@ -652,16 +709,19 @@ app.post('/api/appointments', (req, res) => {
                       service, 
                       barber_name, 
                       date, 
-                      time 
+                                            time 
                     }
                   });
-                }
+                                }
               );
             });
+              }
+            );
           }
         );
       }
     );
+    });
   } catch (err) {
     console.error('Error:', err);
     res.status(500).json({ 
