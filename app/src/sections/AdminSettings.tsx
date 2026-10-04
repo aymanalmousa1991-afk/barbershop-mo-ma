@@ -162,23 +162,23 @@ export function AdminSettings() {
       <h1 className="text-3xl font-bold text-[#1a1a1a] logo-font mb-8">Instellingen</h1>
 
       <Tabs defaultValue="home">
-        <TabsList className="bg-stone-100 mb-6">
-          <TabsTrigger value="home" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
-            Home Teksten
-          </TabsTrigger>
-          <TabsTrigger value="services" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
-            Diensten
-          </TabsTrigger>
-                    <TabsTrigger value="absences" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
-            Afwezigheid
-          </TabsTrigger>
-          <TabsTrigger value="booking" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
-            Boekingen
-          </TabsTrigger>
-                                        <TabsTrigger value="barbers" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white">
-            Kappers
-          </TabsTrigger>
-        </TabsList>
+        <TabsList className="bg-stone-100 mb-6 w-full justify-start overflow-x-auto flex-nowrap h-auto gap-1 p-1">
+            <TabsTrigger value="home" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white text-xs sm:text-sm whitespace-nowrap px-2 sm:px-3">
+              Home Teksten
+            </TabsTrigger>
+            <TabsTrigger value="services" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white text-xs sm:text-sm whitespace-nowrap px-2 sm:px-3">
+              Diensten
+            </TabsTrigger>
+                      <TabsTrigger value="absences" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white text-xs sm:text-sm whitespace-nowrap px-2 sm:px-3">
+              Afwezigheid
+            </TabsTrigger>
+            <TabsTrigger value="booking" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white text-xs sm:text-sm whitespace-nowrap px-2 sm:px-3">
+              Boekingen
+            </TabsTrigger>
+                                          <TabsTrigger value="barbers" className="data-[state=active]:bg-[#6b0f1a] data-[state=active]:text-white text-xs sm:text-sm whitespace-nowrap px-2 sm:px-3">
+              Kappers
+            </TabsTrigger>
+          </TabsList>
 
         {/* HOME CONTENT TAB */}
         <TabsContent value="home">
@@ -497,7 +497,7 @@ function HomeContentEditor() {
     { key: 'opening_zo', label: 'Openingstijden Zondag', type: 'text', default: 'Gesloten' },
         { key: 'opening_afspraak', label: 'Op afspraak (dagen + tekst)', type: 'text', default: 'Ma, Di, Vr, Za: uitsluitend op afspraak' },
     { key: 'opening_inloop', label: 'Inloop (dagen + tekst)', type: 'text', default: 'Wo, Do: Inloop' },
-    { key: 'welcome_text', label: 'Welkomsttekst Home', type: 'textarea', default: 'Welkom bij Barbershop Mo&Ma, dé mannenkapper van Edam-Volendam.' },
+    { key: 'welcome_text', label: 'Welkomsttekst Home', type: 'textarea', default: 'Welkom bij Barbershop Mo&Ma, dï¿½ mannenkapper van Edam-Volendam.' },
   ];
 
     return (

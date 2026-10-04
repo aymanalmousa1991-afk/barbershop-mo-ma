@@ -405,8 +405,9 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
             {activeView === 'agenda' ? (
               <>
-                <div className="flex items-center justify-between gap-2 mb-4 bg-white rounded-lg shadow-lg p-4 flex-wrap">
-                                    <div className="flex items-center gap-2">
+                                <div className="flex flex-col gap-3 mb-4 bg-white rounded-lg shadow-lg p-3 sm:p-4">
+                  {/* Rij 1: acties + kapper-filter */}
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => setAddDialogOpen(true)} className="gap-2 border-[#6b0f1a] text-[#6b0f1a] hover:bg-[#6b0f1a] hover:text-white">
                       <Plus className="h-4 w-4" />Nieuwe Afspraak
                     </Button>
@@ -414,38 +415,43 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                       className="gap-2 border-[#6b0f1a] text-[#6b0f1a] hover:bg-[#6b0f1a] hover:text-white">
                       <RefreshCw className={'h-4 w-4 ' + (isRefreshing ? 'animate-spin' : '')} />Verversen
                     </Button>
-                                        <select className="p-2 border rounded text-sm bg-white" value={barberFilter} onChange={(e) => setBarberFilter(e.target.value)}>
+                    <select className="p-2 border rounded text-sm bg-white flex-1 sm:flex-none min-w-[120px]" value={barberFilter} onChange={(e) => setBarberFilter(e.target.value)}>
                       <option value="">Alle kappers</option>
                       {barbersAgenda.map(b => <option key={b.key} value={b.key}>{b.name}</option>)}
                     </select>
                   </div>
-                                    <Button variant="ghost" onClick={handlePrevDay} className="text-[#6b0f1a] hover:bg-[#6b0f1a]/10">
-                    <ChevronLeft className="h-5 w-5 mr-1" />Vorige dag
-                  </Button>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <span className="font-bold text-lg text-[#1a1a1a]">
-                      {format(parseISO(selectedDate), 'EEEE d MMMM yyyy', { locale: nl })}
-                    </span>
-                    {/* Datumkiezer: spring direct naar elke gewenste datum */}
-                    <div className="flex items-center gap-1">
-                      <CalendarIcon className="h-4 w-4 text-[#6b0f1a]" />
-                      <Input
-                        type="date"
-                        value={selectedDate}
-                        onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
-                        className="h-9 w-[160px]"
-                        aria-label="Kies een datum"
-                      />
+
+                  {/* Rij 2: datum-navigatie */}
+                  <div className="flex items-center justify-between gap-1 border-t border-stone-100 pt-3">
+                    <Button variant="ghost" size="sm" onClick={handlePrevDay} className="text-[#6b0f1a] hover:bg-[#6b0f1a]/10 px-2 shrink-0">
+                      <ChevronLeft className="h-5 w-5" /><span className="hidden sm:inline ml-1">Vorige</span>
+                    </Button>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-3 min-w-0">
+                      <span className="font-bold text-sm sm:text-lg text-[#1a1a1a] text-center capitalize whitespace-nowrap">
+                        {format(parseISO(selectedDate), 'EEE d MMM yyyy', { locale: nl })}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <CalendarIcon className="h-4 w-4 text-[#6b0f1a] shrink-0" />
+                        <Input
+                          type="date"
+                          value={selectedDate}
+                          onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
+                          className="h-9 w-[140px] sm:w-[160px]"
+                          aria-label="Kies een datum"
+                        />
+                      </div>
+                      {!isTodaySelected && (
+                        <Button size="sm" onClick={handleToday} className="bg-[#d4af37] text-[#1a1a1a] hover:bg-[#b8941f]">
+                          Vandaag
+                        </Button>
+                      )}
                     </div>
-                    {!isTodaySelected && (
-                      <Button size="sm" onClick={handleToday} className="bg-[#d4af37] text-[#1a1a1a] hover:bg-[#b8941f]">
-                        Vandaag
-                      </Button>
-                    )}
+
+                    <Button variant="ghost" size="sm" onClick={handleNextDay} className="text-[#6b0f1a] hover:bg-[#6b0f1a]/10 px-2 shrink-0">
+                      <span className="hidden sm:inline mr-1">Volgende</span><ChevronRight className="h-5 w-5" />
+                    </Button>
                   </div>
-                  <Button variant="ghost" onClick={handleNextDay} className="text-[#6b0f1a] hover:bg-[#6b0f1a]/10">
-                    Volgende dag<ChevronRight className="h-5 w-5 ml-1" />
-                  </Button>
                 </div>
 
                 <div className="overflow-x-auto bg-white rounded-lg shadow-lg">
