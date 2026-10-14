@@ -14,6 +14,13 @@ primary_region = 'ams'
   NODE_ENV = 'production'
   PORT = '3001'
   REMINDER_CRON_SCHEDULE = '*/30 * * * *'
+  # Database en uploads op het permanente volume (/app/data) i.p.v. in de container,
+  # zodat afspraken en foto's een deploy overleven
+  FLY_VM = '1'
+  # Openingstijden, "vandaag" en herinneringen in Nederlandse tijd
+  TZ = 'Europe/Amsterdam'
+  # Publieke website (links in e-mails, annuleerlink)
+  APP_URL = 'https://barbershopmoma.nl'
 
 [[mounts]]
   source = 'data'

@@ -9,11 +9,14 @@ const multer = require('multer');
 const path = require('path');
 const router = express.Router();
 
+// Map voor galerijfoto's; moet gelijk zijn aan UPLOADS_DIR/photos in server.cjs (geserveerd op /uploads/photos)
+const PHOTOS_DIR = process.env.FLY_VM ? '/app/data/uploads/photos' : path.join(__dirname, '../uploads/photos');
+
 // Multer configuratie voor foto uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const UPLOADS_DIR = process.env.FLY_VM ? '/app/data/uploads' : path.join(__dirname, '..');
-    cb(null, path.join(UPLOADS_DIR, 'uploads/photos'));
+    require('fs').mkdirSync(PHOTOS_DIR, { recursive: true });
+    cb(null, PHOTOS_DIR);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -442,8 +445,7 @@ module.exports = function(db, authenticateToken, servicesMap, invalidateServices
         if (err2) return res.status(500).json({ success: false, error: 'Verwijderen mislukt' });
         // Verwijder ook het bestand van de schijf (niet-blockend)
         const fs = require('fs');
-        const UPLOADS_DIR = process.env.FLY_VM ? '/app/data/uploads' : path.join(__dirname, '..');
-        const filePath = path.join(UPLOADS_DIR, 'uploads/photos', row.filename);
+        const filePath = path.join(PHOTOS_DIR, path.basename(row.filename));
         fs.unlink(filePath, (unlinkErr) => {
           if (unlinkErr) console.error('Kon bestand niet verwijderen:', unlinkErr.message);
         });

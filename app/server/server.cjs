@@ -37,6 +37,12 @@ function loadServicesFromDB(callback) {
   });
 }
 
+// Datum als YYYY-MM-DD in lokale tijd (TZ=Europe/Amsterdam in productie).
+// toISOString() geeft UTC en zou tussen 00:00 en 02:00 de vorige dag opleveren.
+function localDateStr(d = new Date()) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 function getDurationByKey(key, defaultDur = 30) {
   const svc = cachedServices.find(s => s.key === key);
   return svc ? svc.duration : defaultDur;
@@ -423,7 +429,7 @@ app.get('/api/appointments/available-slots', (req, res) => {
 
                 // Block verleden tijd voor vandaag
                 const now = new Date();
-                const todayStr = now.toISOString().split('T')[0];
+                const todayStr = localDateStr(now);
                 if (date === todayStr) {
                   // Gebruik lokale uren/minuten (zelfde timezone als de slots)
                   const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -685,7 +691,7 @@ app.post('/api/appointments', (req, res) => {
                   }
 
                                     // Genereer annuleringstoken en verstuur bevestigingsmail
-                  const APP_URL = process.env.APP_URL || 'https://barbershop-mo-ma.pages.dev';
+                  const APP_URL = process.env.APP_URL || 'https://barbershopmoma.nl';
                   createCancellationToken(this.lastID, (cancelToken) => {
                     const cancelLink = cancelToken ? `${APP_URL}/annuleren?token=${cancelToken}` : '';
                     const serviceName = servicesMap[treatment] || treatment;
@@ -858,7 +864,7 @@ app.get('/api/appointments', authenticateToken, (req, res) => {
     }
 
     if (future === 'true') {
-      const today = new Date().toISOString().split('T')[0];
+      const today = localDateStr();
       query += ' AND date >= ?';
       params.push(today);
     }
@@ -1056,7 +1062,7 @@ app.delete('/api/appointments/:id', authenticateToken, (req, res) => {
  */
 app.get('/api/stats', authenticateToken, (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateStr();
     
     db.all(`
       SELECT 
@@ -1528,7 +1534,7 @@ async function checkAndSendReminders() {
     // Tomorrow's date
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    const tomorrowStr = localDateStr(tomorrow);
 
     console.log(`🔍 [Reminder 24u] Checking appointments for ${tomorrowStr}...`);
 
@@ -1557,7 +1563,7 @@ async function checkAndSendReminders() {
 
           const serviceName = servicesMap[appointment.treatment] || appointment.treatment;
           const barberDisplay = barberDisplayMap[appointment.barber_name] || appointment.barber_name;
-          const APP_URL = process.env.APP_URL || 'https://barbershop-mo-ma.pages.dev';
+          const APP_URL = process.env.APP_URL || 'https://barbershopmoma.nl';
           const cancelLink = appointment.cancel_token ? `${APP_URL}/annuleren?token=${appointment.cancel_token}` : '';
 
           const result = await sendReminderEmail({
@@ -1601,7 +1607,7 @@ db.run(`ALTER TABLE appointments ADD COLUMN reminder_30min_sent INTEGER DEFAULT 
 async function checkAndSend30MinReminders() {
   try {
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
+    const todayStr = localDateStr(now);
     
     // Bereken huidige tijd + 30 minuten
     const targetTime = new Date(now.getTime() + 30 * 60 * 1000);
@@ -1645,7 +1651,7 @@ async function checkAndSend30MinReminders() {
 
           const serviceName = servicesMap[appointment.treatment] || appointment.treatment;
           const barberDisplay = barberDisplayMap[appointment.barber_name] || appointment.barber_name;
-          const APP_URL = process.env.APP_URL || 'https://barbershop-mo-ma.pages.dev';
+          const APP_URL = process.env.APP_URL || 'https://barbershopmoma.nl';
           const cancelLink = appointment.cancel_token ? `${APP_URL}/annuleren?token=${appointment.cancel_token}` : '';
 
           console.log(`📧 [Reminder 30min] Sturen naar ${appointment.email} voor afspraak om ${appointment.time}`);

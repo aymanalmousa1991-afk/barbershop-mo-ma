@@ -13,6 +13,7 @@ import {
     Settings, ArrowRight, KeyRound, Plus, ClipboardList, RefreshCw, MessageSquare
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { localDateStr } from '@/lib/utils';
 import { toast } from 'sonner';
 import { format, parseISO, isToday, isFuture } from 'date-fns';
 import { nl } from 'date-fns/locale';
@@ -91,7 +92,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   const [stats, setStats] = useState({ total: 0, upcoming: 0, past: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(localDateStr());
   const [activeView, setActiveView] = useState<'agenda' | 'list'>('agenda');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -329,17 +330,17 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     appointmentsForDate.filter(a => a.barber_name?.toLowerCase() === barberName);
 
   const handlePrevDay = () => {
-    const d = new Date(selectedDate);
+    const d = new Date(selectedDate + 'T12:00:00');
     d.setDate(d.getDate() - 1);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    setSelectedDate(localDateStr(d));
   };
   const handleNextDay = () => {
-    const d = new Date(selectedDate);
+    const d = new Date(selectedDate + 'T12:00:00');
     d.setDate(d.getDate() + 1);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    setSelectedDate(localDateStr(d));
   };
-  const handleToday = () => setSelectedDate(new Date().toISOString().split('T')[0]);
-  const isTodaySelected = selectedDate === new Date().toISOString().split('T')[0];
+  const handleToday = () => setSelectedDate(localDateStr());
+  const isTodaySelected = selectedDate === localDateStr();
 
   if (isLoading) {
     return (
@@ -433,7 +434,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
               <Card className="border-0 shadow-lg">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
-                    <div><p className="text-sm text-stone-500">Vandaag</p><p className="text-3xl font-bold text-[#1a1a1a]">{appointments.filter(a => a.date === new Date().toISOString().split('T')[0]).length}</p></div>
+                    <div><p className="text-sm text-stone-500">Vandaag</p><p className="text-3xl font-bold text-[#1a1a1a]">{appointments.filter(a => a.date === localDateStr()).length}</p></div>
                     <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center"><CheckCircle className="h-6 w-6 text-green-600" /></div>
                   </div>
                 </CardContent>
@@ -618,20 +619,20 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                     </TabsContent>
                     <TabsContent value="today">
                       <div className="space-y-4">
-                        {appointments.filter(a => a.date === new Date().toISOString().split('T')[0]).map(a => <AppointmentListItem key={a.id} appointment={a} serviceMap={serviceMap} barbersAgenda={barbersAgenda} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDialogOpen(true); }} />)}
-                        {appointments.filter(a => a.date === new Date().toISOString().split('T')[0]).length === 0 && <EmptyState text="Geen afspraken voor vandaag" />}
+                        {appointments.filter(a => a.date === localDateStr()).map(a => <AppointmentListItem key={a.id} appointment={a} serviceMap={serviceMap} barbersAgenda={barbersAgenda} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDialogOpen(true); }} />)}
+                        {appointments.filter(a => a.date === localDateStr()).length === 0 && <EmptyState text="Geen afspraken voor vandaag" />}
                       </div>
                     </TabsContent>
                     <TabsContent value="upcoming">
                       <div className="space-y-4">
-                        {appointments.filter(a => a.date >= new Date().toISOString().split('T')[0]).map(a => <AppointmentListItem key={a.id} appointment={a} serviceMap={serviceMap} barbersAgenda={barbersAgenda} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDialogOpen(true); }} />)}
-                        {appointments.filter(a => a.date >= new Date().toISOString().split('T')[0]).length === 0 && <EmptyState text="Geen aankomende afspraken" />}
+                        {appointments.filter(a => a.date >= localDateStr()).map(a => <AppointmentListItem key={a.id} appointment={a} serviceMap={serviceMap} barbersAgenda={barbersAgenda} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDialogOpen(true); }} />)}
+                        {appointments.filter(a => a.date >= localDateStr()).length === 0 && <EmptyState text="Geen aankomende afspraken" />}
                       </div>
                     </TabsContent>
                     <TabsContent value="past">
                       <div className="space-y-4">
-                        {appointments.filter(a => a.date < new Date().toISOString().split('T')[0]).map(a => <AppointmentListItem key={a.id} appointment={a} serviceMap={serviceMap} barbersAgenda={barbersAgenda} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDialogOpen(true); }} />)}
-                        {appointments.filter(a => a.date < new Date().toISOString().split('T')[0]).length === 0 && <EmptyState text="Geen verlopen afspraken" />}
+                        {appointments.filter(a => a.date < localDateStr()).map(a => <AppointmentListItem key={a.id} appointment={a} serviceMap={serviceMap} barbersAgenda={barbersAgenda} onDelete={() => { setAppointmentToDelete(a); setDeleteDialogOpen(true); }} onMove={() => { setAppointmentToMove(a); setMoveDialogOpen(true); }} />)}
+                        {appointments.filter(a => a.date < localDateStr()).length === 0 && <EmptyState text="Geen verlopen afspraken" />}
                       </div>
                     </TabsContent>
                   </Tabs>

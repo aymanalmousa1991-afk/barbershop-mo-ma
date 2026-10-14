@@ -12,7 +12,7 @@ RUN npm run build
 FROM node:20-alpine AS production
 WORKDIR /app
 
-RUN apk add --no-cache wget python3 py3-setuptools make g++
+RUN apk add --no-cache wget python3 py3-setuptools make g++ tzdata
 
 COPY package*.json ./
 RUN npm ci --only=production --ignore-scripts && npm rebuild sqlite3 --build-from-source

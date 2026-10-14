@@ -16,7 +16,7 @@ const EMAIL_FROM = process.env.EMAIL_FROM || 'momakapsalon@gmail.com';
 
 const SHOP_ADDRESS = 'W. J. Tuijnstraat 14A, 1131 ZJ Volendam';
 const SHOP_PHONE = '06-85171198';
-const SHOP_WEBSITE = 'https://barbershop-mo-ma.onrender.com';
+const SHOP_WEBSITE = process.env.APP_URL || 'https://barbershopmoma.nl';
 
 function createTransporter() {
   if (!SENDGRID_API_KEY) {

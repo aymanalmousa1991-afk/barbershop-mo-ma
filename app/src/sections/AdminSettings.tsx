@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { localDateStr } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -42,7 +43,7 @@ export function AdminSettings() {
   const [isSaving, setIsSaving] = useState(false);
   const [newAbsence, setNewAbsence] = useState<BarberAbsence>({
     barber_name: 'mo',
-    date: new Date().toISOString().split('T')[0],
+    date: localDateStr(),
     start_time: '09:00',
     end_time: '17:00',
     reason: '',
@@ -130,7 +131,7 @@ export function AdminSettings() {
       await loadData();
       setNewAbsence({
         barber_name: 'mo',
-        date: new Date().toISOString().split('T')[0],
+        date: localDateStr(),
         start_time: '09:00',
         end_time: '17:00',
         reason: '',

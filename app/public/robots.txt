@@ -3,5 +3,5 @@ Allow: /
 Disallow: /admin
 Disallow: /api/
 
-Sitemap: https://barbershop-mo-ma.nl/sitemap.xml
+Sitemap: https://barbershopmoma.nl/sitemap.xml
 

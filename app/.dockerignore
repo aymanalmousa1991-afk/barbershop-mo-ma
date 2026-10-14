@@ -1,0 +1,17 @@
+# Lokale afhankelijkheden en builds (worden in de container opnieuw gemaakt)
+node_modules
+dist
+
+# Lokale data mag NOOIT in de image: productie gebruikt het volume /app/data
+server/*.sqlite*
+server/*.db*
+uploads
+
+# Overig
+.env
+.env.local
+*.log
+*.bak
+src/**/*.bak
+server/fix_*.cjs
+scripts

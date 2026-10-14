@@ -1,6 +1,7 @@
 ﻿import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { localDateStr } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, FileText, Download, TrendingUp, Users, Scissors, Award } from 'lucide-react';
@@ -67,8 +68,8 @@ function generateReportHTML(r: any) {
   return h;
 }
 export function AdminReports() {
-  const [fromDate, setFromDate] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 3); return d.toISOString().split('T')[0]; });
-  const [toDate, setToDate] = useState(() => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); return d.toISOString().split('T')[0]; });
+  const [fromDate, setFromDate] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 3); return localDateStr(d); });
+  const [toDate, setToDate] = useState(() => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); return localDateStr(d); });
   const [report, setReport] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const token = localStorage.getItem('token');
