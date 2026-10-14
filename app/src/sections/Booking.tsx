@@ -105,6 +105,8 @@ export function Booking({ onNavigate }: BookingProps) {
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  // Kopie van de geboekte afspraak voor de bevestiging (het formulier wordt na boeken leeggemaakt)
+  const [confirmedBooking, setConfirmedBooking] = useState<{ service: string; barber: string; date: string; time: string; email: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   
   // Wachtlijst state
@@ -335,12 +337,20 @@ export function Booking({ onNavigate }: BookingProps) {
         }),
       });
 
-      const result = await response.json();
+      // Ook bij een onverwachte (niet-JSON) serverfout een nette melding tonen
+      const result = await response.json().catch(() => ({}));
 
-      if (!result.success) {
-        throw new Error(result.error || 'Er is iets misgegaan');
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Er is iets misgegaan bij het maken van je afspraak. Probeer het opnieuw of bel ons op 06-85171198.');
       }
 
+      setConfirmedBooking({
+        service: selectedService?.name || formData.service,
+        barber: barbers.find(b => b.name === finalBarberName)?.display_name || finalBarberName,
+        date: formData.date,
+        time: formData.time,
+        email: formData.email,
+      });
       setShowSuccess(true);
       // Reset form
       setFormData({
@@ -358,7 +368,10 @@ export function Booking({ onNavigate }: BookingProps) {
       setAnyBarberSlotMap({});
       setCurrentStep(1);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Er is iets misgegaan. Probeer het opnieuw.';
+      // fetch gooit een TypeError als er geen verbinding is (bijv. geen internet)
+      const errorMessage = err instanceof TypeError
+        ? 'Geen verbinding. Controleer je internetverbinding en probeer het opnieuw.'
+        : err instanceof Error ? err.message : 'Er is iets misgegaan. Probeer het opnieuw.';
       setError(errorMessage);
     } finally {
       setIsSubmitting(false);
@@ -1039,7 +1052,7 @@ export function Booking({ onNavigate }: BookingProps) {
 
                     {/* Info Sidebar - onder het formulier op mobiel */}
           <div className="order-2 lg:col-span-1 space-y-4 sm:space-y-6">
-            {/* Contact & openingstijden zijn te vinden in de footer. Hier alleen een korte verwijzing. */}
+            {/* Korte verwijzing naar de contactpagina en telefoon */}
             <Card className="shadow-lg border-0 overflow-hidden">
               <div className="bg-[#d4af37] px-4 sm:px-6 py-3 sm:py-4">
                 <h3 className="text-base sm:text-lg font-bold text-[#1a1a1a] flex items-center gap-2">
@@ -1048,9 +1061,6 @@ export function Booking({ onNavigate }: BookingProps) {
                 </h3>
               </div>
               <CardContent className="p-4 sm:p-6 space-y-4">
-                <p className="text-stone-600 text-sm">
-                  Onze contactgegevens en openingstijden vind je onderaan de pagina.
-                </p>
                                 <div className="space-y-2">
                                   <Button
                                     onClick={() => onNavigate('contact')}
@@ -1089,19 +1099,19 @@ export function Booking({ onNavigate }: BookingProps) {
             <DialogDescription className="text-center mt-4">
               <p className="mb-4">Bedankt voor je afspraak bij Mo&Ma! 🎉</p>
               <div className="bg-[#faf9f7] rounded-lg p-4 text-left space-y-2 text-sm mb-4">
-                <p><strong>Behandeling:</strong> {selectedService?.name}</p>
-                <p><strong>Kapper:</strong> {selectedBarber?.display_name}</p>
+                <p><strong>Behandeling:</strong> {confirmedBooking?.service}</p>
+                <p><strong>Kapper:</strong> {confirmedBooking?.barber}</p>
                 <p>
                   <strong>Datum:</strong>{' '}
-                  {formData.date && format(parseISO(formData.date), 'EEEE d MMMM yyyy', { locale: nl })}
+                  {confirmedBooking?.date && format(parseISO(confirmedBooking.date), 'EEEE d MMMM yyyy', { locale: nl })}
                 </p>
-                <p><strong>Tijd:</strong> {formData.time}</p>
+                <p><strong>Tijd:</strong> {confirmedBooking?.time}</p>
               </div>
-              {formData.email ? (
+              {confirmedBooking?.email ? (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
                   <p className="text-blue-700 text-sm flex items-center gap-2">
                     <Mail className="h-4 w-4" />
-                    Een bevestiging is verstuurd naar <strong>{formData.email}</strong>
+                    Een bevestiging is verstuurd naar <strong>{confirmedBooking.email}</strong>
                   </p>
                   <p className="text-blue-600 text-xs mt-1">
                     Je ontvangt ook een herinnering 24 uur van tevoren.

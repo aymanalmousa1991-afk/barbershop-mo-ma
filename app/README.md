@@ -67,7 +67,7 @@ De website is beschikbaar op `http://localhost:5173`
 ## Standaard Login Gegevens
 
 - **Gebruikersnaam**: `admin`
-- **Wachtwoord**: `admin123`
+- **Wachtwoord**: ingesteld via `ADMIN_PASSWORD` bij een nieuwe database (wijzig het na de eerste login)
 
 Je kunt deze wijzigen in de database of nieuwe gebruikers toevoegen via de SQLite database.
 

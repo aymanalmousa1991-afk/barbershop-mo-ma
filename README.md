@@ -12,4 +12,4 @@ D? mannenkapper van Volendam - Online afspraken systeem
 ## Admin
 - **URL:** https://JOUW-DOMEIN.onrender.com/admin
 - **Gebruikersnaam:** admin
-- **Wachtwoord:** Barber123!
+- **Wachtwoord:** wordt bij een nieuwe database ingesteld via de environment variable `ADMIN_PASSWORD`. Wijzig het daarna via de admin; het wordt bij herstart niet meer overschreven.

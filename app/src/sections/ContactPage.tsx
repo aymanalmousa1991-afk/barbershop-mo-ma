@@ -1,7 +1,10 @@
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { MapPin, Phone, Mail, Clock, Instagram, Facebook, MessageCircle, ArrowLeft, Navigation } from 'lucide-react';
 import { useHomeContent } from '@/hooks/useHomeContent';
+
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 interface ContactPageProps {
   onNavigate: (page: string) => void;
@@ -13,6 +16,17 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
   const mapsQuery = encodeURIComponent(address);
   const mapsEmbed = `https://www.google.com/maps?q=${mapsQuery}&output=embed`;
   const mapsLink = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
+
+  // Foto van de winkel (in te stellen via Admin > Instellingen)
+  const [shopImage, setShopImage] = useState<string | null>(null);
+  useEffect(() => {
+    fetch(`${API_URL}/contact-image`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.data?.url) setShopImage(API_URL.replace('/api', '') + data.data.url);
+      })
+      .catch(err => console.error('Error fetching contact image:', err));
+  }, []);
 
   return (
     <section className="w-full py-16 bg-[#faf9f7] min-h-screen">
@@ -36,6 +50,16 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
             gezellig langs in de barbershop in Volendam.
           </p>
         </div>
+
+        {shopImage && (
+          <div className="mb-8 rounded-xl overflow-hidden shadow-lg">
+            <img
+              src={shopImage}
+              alt="Barbershop Mo&Ma in Volendam"
+              className="w-full aspect-[16/9] sm:aspect-[21/9] object-cover"
+            />
+          </div>
+        )}
 
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Contactgegevens */}

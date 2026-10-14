@@ -10,9 +10,10 @@ import {
   LogOut, Calendar, Calendar as CalendarIcon, Clock, Mail, Phone, FileText,
   Trash2, Loader2, AlertTriangle, CheckCircle, TrendingUp,
   Scissors, Users, User, ChevronLeft, ChevronRight,
-    Settings, ArrowRight, KeyRound, Plus, ClipboardList, RefreshCw
+    Settings, ArrowRight, KeyRound, Plus, ClipboardList, RefreshCw, MessageSquare
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { toast } from 'sonner';
 import { format, parseISO, isToday, isFuture } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import type { Appointment } from '@/types';
@@ -58,6 +59,19 @@ function sortBarbers<T extends { key: string }>(list: T[]): T[] {
 
 function getBarberColor(barberName: string) {
   return barberColors[barberName?.toLowerCase()] || defaultBarberColor;
+}
+
+// Haal de foutreden uit een mislukte API-response (of gebruik de fallback)
+async function readApiError(response: Response, fallback: string): Promise<string> {
+  const result = await response.json().catch(() => ({}));
+  return result.error || fallback;
+}
+
+// Zet een gevangen fout om in een begrijpelijke Nederlandse melding
+function toErrorMessage(err: unknown, fallback: string): string {
+  // fetch gooit een TypeError als de server niet bereikbaar is
+  if (err instanceof TypeError) return 'Geen verbinding met de server. Controleer je internet en probeer het opnieuw.';
+  return err instanceof Error && err.message ? err.message : fallback;
 }
 
 // Tijdlijn in blokjes van 5 minuten (08:00 - 17:55)
@@ -125,6 +139,19 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   const [newAppointment, setNewAppointment] = useState({ name: '', email: '', phone: '', service: 'knippen-stylen', notes: '' });
   const [isAdding, setIsAdding] = useState(false);
 
+  // Pauzes per kapper (terugkerend per weekdag)
+  const [barberBreaks, setBarberBreaks] = useState<{ barber_name: string; start_time: string; end_time: string; days: string }[]>([]);
+  const fetchBreaks = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(API_URL + '/admin/breaks', { headers: { Authorization: 'Bearer ' + token } });
+      const data = await res.json();
+      if (data.success) setBarberBreaks(data.data || []);
+    } catch (err) {
+      console.error('Error fetching breaks:', err);
+    }
+  };
+
   const fetchBarbers = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -173,14 +200,17 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     setTimeout(() => setIsRefreshing(false), 400);
   };
 
-  useEffect(() => { fetchData(); fetchBarbers(); fetchServices(); }, []);
+  useEffect(() => { fetchData(); fetchBarbers(); fetchServices(); fetchBreaks(); }, []);
+
+  // Pauzes kunnen in Instellingen gewijzigd zijn: herlaad bij terugkeer naar de agenda
+  useEffect(() => { if (activeTab === 'dashboard') fetchBreaks(); }, [activeTab]);
 
   // Automatisch verversen: elke 30s stil op de achtergrond + bij terugkeren naar het tabblad
   useEffect(() => {
     const interval = setInterval(() => { fetchData(true); }, 30000);
 
     const onVisible = () => {
-      if (document.visibilityState === 'visible') fetchData(true);
+      if (document.visibilityState === 'visible') { fetchData(true); fetchBreaks(); }
     };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
@@ -201,12 +231,14 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (!response.ok) throw new Error('Failed to delete');
+      if (!response.ok) throw new Error(await readApiError(response, 'Verwijderen mislukt'));
       await fetchData();
       setDeleteDialogOpen(false);
       setAppointmentToDelete(null);
+      toast.success('Afspraak verwijderd');
     } catch (err) {
       console.error('Error deleting:', err);
+      toast.error(toErrorMessage(err, 'Afspraak kon niet worden verwijderd'));
     } finally {
       setIsDeleting(false);
     }
@@ -231,15 +263,17 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
           notes: appointmentToMove.notes,
         })
       });
-      if (!response.ok) throw new Error('Verplaatsen mislukt');
+      if (!response.ok) throw new Error(await readApiError(response, 'Verplaatsen mislukt'));
       await fetchData();
       setMoveDialogOpen(false);
       setAppointmentToMove(null);
       setMoveTargetBarber('');
       setMoveDate('');
       setMoveTime('');
+      toast.success('Afspraak verplaatst');
     } catch (err) {
       console.error('Error moving:', err);
+      toast.error(toErrorMessage(err, 'Afspraak kon niet worden verplaatst'));
     } finally {
       setIsMoving(false);
     }
@@ -250,7 +284,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     setIsAdding(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(API_URL + '/appointments', {
+      const response = await fetch(API_URL + '/admin/appointments', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -264,14 +298,16 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
           notes: newAppointment.notes,
         })
       });
-      if (!response.ok) throw new Error('Fout bij toevoegen');
+      if (!response.ok) throw new Error(await readApiError(response, 'Fout bij toevoegen'));
       await fetchData();
       setAddDialogOpen(false);
       setAddBarber('');
       setAddTime('');
       setNewAppointment({ name: '', email: '', phone: '', service: 'knippen-stylen', notes: '' });
+      toast.success('Afspraak toegevoegd aan de agenda');
     } catch (err) {
       console.error('Error adding:', err);
+      toast.error(toErrorMessage(err, 'Afspraak kon niet worden toegevoegd'));
     } finally {
       setIsAdding(false);
     }
@@ -280,6 +316,15 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   const handleLogout = () => { logout(); onNavigate('home'); };
 
   const appointmentsForDate = appointments.filter(a => a.date === selectedDate);
+  const selectedWeekday = String(new Date(selectedDate + 'T12:00:00').getDay());
+  const breaksForDate = barberBreaks.filter(b => b.days.split(',').includes(selectedWeekday));
+  // Pauze van deze kapper waar het 5-min slot in valt (of undefined)
+  const breakAt = (barberName: string, slotMin: number) => breaksForDate.find(b => {
+    if (b.barber_name !== barberName) return false;
+    const [sh, sm] = b.start_time.split(':').map(Number);
+    const [eh, em] = b.end_time.split(':').map(Number);
+    return slotMin >= sh * 60 + sm && slotMin < eh * 60 + em;
+  });
   const appointmentsByBarber = (barberName: string) => 
     appointmentsForDate.filter(a => a.barber_name?.toLowerCase() === barberName);
 
@@ -497,11 +542,25 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                                   <td key={key} rowSpan={spanRows}
                                       className={'align-top px-1 pt-0.5 border-l-4 ' + color.light + ' ' + color.border}>
                                     <div className="group relative h-full">
-                                      <p className={'text-[11px] font-bold leading-tight truncate ' + color.text}>{apt.name}</p>
+                                      <p className={'text-[11px] font-bold leading-tight truncate flex items-center gap-1 ' + color.text}>
+                                        {apt.notes && <MessageSquare className="h-3 w-3 flex-shrink-0 text-amber-600" />}
+                                        <span className="truncate">{apt.name}</span>
+                                      </p>
                                       <p className="text-[10px] font-semibold text-stone-600 leading-tight">
                                         {apt.time}&nbsp;&ndash;&nbsp;{fmt(endMin)}
                                       </p>
                                       <p className="text-[10px] text-stone-400 leading-tight truncate">{serviceMap[apt.service]?.name || apt.service}</p>
+                                      {apt.notes && (
+                                        // Opmerking van de klant: ingekort in de cel, volledig bij hover of klik
+                                        <button
+                                          type="button"
+                                          title={apt.notes}
+                                          onClick={() => toast(`Opmerking van ${apt.name}`, { description: apt.notes })}
+                                          className="block w-full text-left text-[10px] italic text-amber-700 leading-tight truncate hover:underline"
+                                        >
+                                          {apt.notes}
+                                        </button>
+                                      )}
                                       <div className="absolute top-0 right-0 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded p-0.5">
                                         <button onClick={()=>{setAppointmentToMove(apt);setMoveDate(apt.date);setMoveTime(apt.time);setMoveDialogOpen(true);}} className="text-blue-500 hover:text-blue-700 p-0.5"><ArrowRight className="h-3 w-3"/></button>
                                         <button onClick={()=>{setAppointmentToDelete(apt);setDeleteDialogOpen(true);}} className="text-red-500 hover:text-red-700 p-0.5"><Trash2 className="h-3 w-3"/></button>
@@ -512,6 +571,16 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                               }
                               // Vervolcellen hoeven niks te tonen (de rowSpan dekt ze al)
                               if (continuation) return null;
+                              const pause = breakAt(key, slotMin);
+                              if (pause) {
+                                return (
+                                  <td key={key} className="px-1 border-b border-stone-200 bg-stone-200/70" title={'Pauze ' + pause.start_time + ' - ' + pause.end_time}>
+                                    <button onClick={()=>{setAddBarber(key);setAddTime(time);setAddDialogOpen(true);}} className="w-full text-left" style={{ height: isHour ? 22 : 16 }}>
+                                      {pause.start_time === time && <span className="text-[10px] font-semibold text-stone-500 leading-none">Pauze {pause.start_time}&ndash;{pause.end_time}</span>}
+                                    </button>
+                                  </td>
+                                );
+                              }
                               return (
                                 <td key={key} className={'px-1 border-b border-stone-100 ' + (isHour ? 'border-t border-stone-300' : '')}>
                                   <button onClick={()=>{setAddBarber(key);setAddTime(time);setAddDialogOpen(true);}} className="w-full flex items-center justify-center group" style={{ height: isHour ? 22 : 16 }}>
@@ -791,7 +860,7 @@ function AppointmentListItem({ appointment, onDelete, onMove, serviceMap, barber
           <span className="flex items-center gap-1"><Clock className="h-4 w-4 text-[#6b0f1a]" />{appointment.time}</span>
         </div>
         <div className="flex flex-wrap gap-4 text-sm text-stone-500">
-          <span className="flex items-center gap-1"><Mail className="h-4 w-4" />{appointment.email || '���'}</span>
+          <span className="flex items-center gap-1"><Mail className="h-4 w-4" />{appointment.email || '—'}</span>
           {appointment.phone && <span className="flex items-center gap-1"><Phone className="h-4 w-4" />{appointment.phone}</span>}
         </div>
         {appointment.notes && <p className="text-sm text-stone-500 flex items-start gap-1"><FileText className="h-4 w-4 mt-0.5 flex-shrink-0" />{appointment.notes}</p>}

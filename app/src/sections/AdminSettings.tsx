@@ -532,6 +532,7 @@ function HomeContentEditor() {
         </CardContent>
       </Card>
 
+
       {/* Home Teksten */}
       <Card className="border-0 shadow-lg">
         <CardHeader className="bg-gradient-to-r from-[#6b0f1a] to-[#8b1523]">
@@ -585,9 +586,6 @@ function BookingSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [weeksAhead, setWeeksAhead] = useState('8');
-  const [breakEnabled, setBreakEnabled] = useState(false);
-  const [breakStart, setBreakStart] = useState('12:30');
-  const [breakEnd, setBreakEnd] = useState('13:00');
   const token = localStorage.getItem('token');
 
   const loadSettings = async () => {
@@ -597,9 +595,6 @@ function BookingSettings() {
       if (data.success) {
         const c = data.data || {};
         setWeeksAhead(c.booking_weeks_ahead || '8');
-        setBreakEnabled(c.break_enabled === '1' || c.break_enabled === 'true');
-        setBreakStart(c.break_start || '12:30');
-        setBreakEnd(c.break_end || '13:00');
       }
     } catch (err) {
       console.error(err);
@@ -621,12 +616,7 @@ function BookingSettings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await Promise.all([
-        saveSetting('booking_weeks_ahead', String(parseInt(weeksAhead, 10) || 8)),
-        saveSetting('break_enabled', breakEnabled ? '1' : '0'),
-        saveSetting('break_start', breakStart),
-        saveSetting('break_end', breakEnd),
-      ]);
+      await saveSetting('booking_weeks_ahead', String(parseInt(weeksAhead, 10) || 8));
       toast.success('Boekingsinstellingen opgeslagen!');
       await loadSettings();
     } catch (err) {
@@ -642,7 +632,7 @@ function BookingSettings() {
   }
 
   return (
-    <div className="grid md:grid-cols-2 gap-6">
+    <div className="space-y-6">
       {/* Weken vooruit */}
       <Card className="border-0 shadow-lg">
         <CardHeader className="bg-gradient-to-r from-[#6b0f1a] to-[#8b1523]">
@@ -667,49 +657,205 @@ function BookingSettings() {
             />
             <p className="text-xs text-stone-400 mt-1">Bijv. 8 = klanten kunnen max. 8 weken vooruit plannen.</p>
           </div>
+          <Button onClick={handleSave} disabled={saving} className="w-full bg-[#6b0f1a]">
+            {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Opslaan...</> : <><Save className="h-4 w-4 mr-2" />Opslaan</>}
+          </Button>
         </CardContent>
       </Card>
 
-      {/* Vaste pauze */}
-      <Card className="border-0 shadow-lg">
-        <CardHeader className="bg-gradient-to-r from-[#6b0f1a] to-[#8b1523]">
-          <CardTitle className="text-white flex items-center gap-2">
-            <Coffee className="h-5 w-5" />
-            Vaste pauze
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-6 space-y-4">
-          <p className="text-sm text-stone-600">
-            Deze pauze wordt automatisch op <strong>alle werkdagen</strong> herhaald voor alle kappers, totdat je deze aanpast.
-          </p>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="breakEnabled"
-              checked={breakEnabled}
-              onChange={(e) => setBreakEnabled(e.target.checked)}
-            />
-            <Label htmlFor="breakEnabled">Vaste pauze actief</Label>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Pauze van</Label>
-              <Input type="time" value={breakStart} onChange={(e) => setBreakStart(e.target.value)} className="mt-1" />
-            </div>
-            <div>
-              <Label>Pauze tot</Label>
-              <Input type="time" value={breakEnd} onChange={(e) => setBreakEnd(e.target.value)} className="mt-1" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="md:col-span-2">
-        <Button onClick={handleSave} disabled={saving} className="w-full bg-[#6b0f1a]">
-          {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Opslaan...</> : <><Save className="h-4 w-4 mr-2" />Instellingen opslaan</>}
-        </Button>
-            </div>
+      <div>
+        <BarberBreaksManager />
+      </div>
     </div>
+  );
+}
+
+// ========== PAUZES PER KAPPER ==========
+
+interface BarberBreak {
+  id: number;
+  barber_name: string;
+  start_time: string;
+  end_time: string;
+  days: string;
+}
+
+// Weekdagen zoals JS getDay(): 1=ma ... 6=za (zondag gesloten)
+const WEEKDAYS = [
+  { value: '1', label: 'Ma' },
+  { value: '2', label: 'Di' },
+  { value: '3', label: 'Wo' },
+  { value: '4', label: 'Do' },
+  { value: '5', label: 'Vr' },
+  { value: '6', label: 'Za' },
+];
+
+function BarberBreaksManager() {
+  const [barbers, setBarbers] = useState<{ name: string; display_name: string }[]>([]);
+  const [breaks, setBreaks] = useState<BarberBreak[]>([]);
+  // Lokale, nog niet opgeslagen wijzigingen per pauze-id
+  const [drafts, setDrafts] = useState<Record<number, BarberBreak>>({});
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<number | string | null>(null);
+  const token = localStorage.getItem('token');
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+  const load = async () => {
+    try {
+      const [bRes, brRes] = await Promise.all([
+        fetch(`${API_URL}/admin/barbers`, { headers }),
+        fetch(`${API_URL}/admin/breaks`, { headers }),
+      ]);
+      const bData = await bRes.json();
+      const brData = await brRes.json();
+      if (bData.success) setBarbers((bData.data || []).filter((b: any) => b.is_active));
+      if (brData.success) setBreaks(brData.data || []);
+      setDrafts({});
+    } catch (err) {
+      console.error(err);
+      toast.error('Pauzes laden mislukt');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const request = async (url: string, method: string, body?: object) => {
+    const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) throw new Error(data.error || 'Er ging iets mis');
+    return data;
+  };
+
+  const addBreak = async (barber_name: string) => {
+    setBusyId('new-' + barber_name);
+    try {
+      await request(`${API_URL}/admin/breaks`, 'POST', {
+        barber_name, start_time: '12:30', end_time: '13:00', days: WEEKDAYS.map(d => d.value),
+      });
+      toast.success('Pauze toegevoegd - pas de tijden aan en sla op');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Toevoegen mislukt');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const saveBreak = async (br: BarberBreak) => {
+    setBusyId(br.id);
+    try {
+      await request(`${API_URL}/admin/breaks/${br.id}`, 'PUT', br);
+      toast.success('Pauze opgeslagen');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Opslaan mislukt');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const deleteBreak = async (id: number) => {
+    setBusyId(id);
+    try {
+      await request(`${API_URL}/admin/breaks/${id}`, 'DELETE');
+      toast.success('Pauze verwijderd');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Verwijderen mislukt');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const updateDraft = (br: BarberBreak, changes: Partial<BarberBreak>) => {
+    setDrafts(prev => ({ ...prev, [br.id]: { ...(prev[br.id] || br), ...changes } }));
+  };
+
+  const toggleDay = (br: BarberBreak, day: string) => {
+    const days = br.days.split(',').filter(Boolean);
+    const next = days.includes(day) ? days.filter(d => d !== day) : [...days, day];
+    updateDraft(br, { days: next.sort().join(',') });
+  };
+
+  return (
+    <Card className="border-0 shadow-lg">
+      <CardHeader className="bg-gradient-to-r from-[#6b0f1a] to-[#8b1523]">
+        <CardTitle className="text-white flex items-center gap-2">
+          <Coffee className="h-5 w-5" />
+          Pauzes per kapper
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 sm:p-6 space-y-6">
+        <p className="text-sm text-stone-600">
+          Stel per kapper één of meer vaste pauzes in. Een pauze herhaalt zich elke week op de gekozen dagen.
+          Klanten kunnen tijdens een pauze geen afspraak boeken; in de agenda zie je de pauze grijs.
+        </p>
+
+        {loading ? (
+          <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-stone-500" /></div>
+        ) : barbers.map(barber => {
+          const barberBreaks = breaks.filter(b => b.barber_name === barber.name);
+          return (
+            <div key={barber.name} className="border rounded-lg p-3 sm:p-4">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h3 className="font-bold text-[#6b0f1a]">{barber.display_name}</h3>
+                <Button size="sm" variant="outline" onClick={() => addBreak(barber.name)} disabled={busyId === 'new-' + barber.name}>
+                  {busyId === 'new-' + barber.name ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Plus className="h-4 w-4 mr-1" />Pauze</>}
+                </Button>
+              </div>
+
+              {barberBreaks.length === 0 && <p className="text-sm text-stone-400">Geen pauzes ingesteld.</p>}
+
+              <div className="space-y-3">
+                {barberBreaks.map(original => {
+                  const br = drafts[original.id] || original;
+                  const dirty = !!drafts[original.id];
+                  const days = br.days.split(',');
+                  return (
+                    <div key={original.id} className={'rounded-md p-3 space-y-3 ' + (dirty ? 'bg-amber-50 border border-amber-200' : 'bg-stone-50')}>
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div>
+                          <Label className="text-xs">Van</Label>
+                          <Input type="time" step={300} value={br.start_time} onChange={(e) => updateDraft(original, { start_time: e.target.value })} className="mt-1 w-28" />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Tot</Label>
+                          <Input type="time" step={300} value={br.end_time} onChange={(e) => updateDraft(original, { end_time: e.target.value })} className="mt-1 w-28" />
+                        </div>
+                        <div className="flex gap-2 ml-auto">
+                          {dirty && (
+                            <Button size="sm" onClick={() => saveBreak(br)} disabled={busyId === original.id} className="bg-[#6b0f1a]">
+                              {busyId === original.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" />Opslaan</>}
+                            </Button>
+                          )}
+                          <Button size="sm" variant="ghost" onClick={() => deleteBreak(original.id)} disabled={busyId === original.id} className="text-red-500 hover:text-red-700">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {WEEKDAYS.map(d => (
+                          <button
+                            key={d.value}
+                            type="button"
+                            onClick={() => toggleDay(br, d.value)}
+                            className={'px-2.5 py-1 rounded text-xs font-medium border ' + (days.includes(d.value) ? 'bg-[#6b0f1a] text-white border-[#6b0f1a]' : 'bg-white text-stone-500 border-stone-300')}
+                          >
+                            {d.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }
 

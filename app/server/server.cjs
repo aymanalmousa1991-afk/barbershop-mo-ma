@@ -42,6 +42,18 @@ function getDurationByKey(key, defaultDur = 30) {
   return svc ? svc.duration : defaultDur;
 }
 
+// Pauzes van één kapper die gelden op de weekdag van `date` (YYYY-MM-DD)
+function getBarberBreaks(barber_name, date, callback) {
+  const weekday = String(new Date(date + 'T12:00:00').getDay());
+  db.all('SELECT start_time, end_time, days FROM barber_breaks WHERE barber_name = ?', [barber_name], (err, rows) => {
+    if (err) {
+      console.error('Database error (pauzes):', err);
+      return callback([]);
+    }
+    callback((rows || []).filter(b => (b.days || '').split(',').includes(weekday)));
+  });
+}
+
 // Forceer cache leegmaken (wordt aangeroepen na admin wijzigingen)
 function invalidateServicesCache() {
   cachedServices = [];
@@ -74,15 +86,17 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3001,https://barbershop-mo-ma.pages.dev,https://barbershopmoma.nl,https://www.barbershopmoma.nl').split(',').map(s => s.trim());
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3001,https://barbershop-mo-ma.pages.dev,https://barbershopmoma.nl,https://www.barbershopmoma.nl,https://barbershop-mo-ma-api.fly.dev').split(',').map(s => s.trim());
 const corsOptions = {
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
     if (process.env.NODE_ENV !== 'production' || ALLOWED_ORIGINS.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
+      // Geen CORS-headers voor onbekende origins: de browser blokkeert dan cross-origin
+      // verzoeken. Same-origin verzoeken (frontend via dezelfde server) werken gewoon.
       console.warn('CORS blocked:', origin);
-      callback(null, true);
+      callback(null, false);
     }
   },
   credentials: true,
@@ -448,16 +462,11 @@ app.get('/api/appointments/available-slots', (req, res) => {
               }
             }
 
-            // Vaste pauze (indien ingesteld) geldt voor alle kappers op alle werkdagen
-            db.all(
-              "SELECT section, content FROM home_content WHERE section IN ('break_enabled','break_start','break_end')",
-              (err3, breakRows) => {
-                const breakCfg = {};
-                (breakRows || []).forEach(r => { breakCfg[r.section] = r.content; });
-                                const breakEnabled = breakCfg.break_enabled === '1' || breakCfg.break_enabled === 'true';
-                if (breakEnabled && breakCfg.break_start && breakCfg.break_end) {
-                  const bStart = toMin(breakCfg.break_start);
-                  const bEnd = toMin(breakCfg.break_end);
+            // Pauzes van deze kapper op deze weekdag
+            getBarberBreaks(barber_name, date, (breaks) => {
+                for (const br of breaks) {
+                  const bStart = toMin(br.start_time);
+                  const bEnd = toMin(br.end_time);
                   for (const slot of allSlots) {
                     const slotMin = toMin(slot);
                     // Blokkeer het slot als de nieuwe afspraak (slotMin + duur) OVERLAPT met de pauze
@@ -643,21 +652,16 @@ app.post('/api/appointments', (req, res) => {
               }
             }
 
-            // Vaste pauze (indien ingesteld) geldt voor alle kappers: blokkeer boeking in de pauze
-            db.all(
-              "SELECT section, content FROM home_content WHERE section IN ('break_enabled','break_start','break_end')",
-              (errB, breakRows) => {
-                const breakCfg = {};
-                (breakRows || []).forEach(r => { breakCfg[r.section] = r.content; });
-                                const breakEnabled = breakCfg.break_enabled === '1' || breakCfg.break_enabled === 'true';
-                if (breakEnabled && breakCfg.break_start && breakCfg.break_end) {
-                  const bStart = parseInt(breakCfg.break_start.split(":")[0]) * 60 + parseInt(breakCfg.break_start.split(":")[1]);
-                  const bEnd = parseInt(breakCfg.break_end.split(":")[0]) * 60 + parseInt(breakCfg.break_end.split(":")[1]);
+            // Pauzes van deze kapper: blokkeer boeking die overlapt met een pauze
+            getBarberBreaks(barber_name, date, (breaks) => {
+                for (const br of breaks) {
+                  const bStart = parseInt(br.start_time.split(":")[0]) * 60 + parseInt(br.start_time.split(":")[1]);
+                  const bEnd = parseInt(br.end_time.split(":")[0]) * 60 + parseInt(br.end_time.split(":")[1]);
                   // Blokkeer als de afspraak (newStartMin t/m newEndMin) OVERLAPT met de pauze
                   if (newStartMin < bEnd && newEndMin > bStart) {
                     return res.status(400).json({
                       success: false,
-                      error: `Dit tijdstip overlapt met de pauze (${breakCfg.break_start} - ${breakCfg.break_end}). Kies een ander tijdstip.`
+                      error: `Dit tijdstip overlapt met de pauze van de kapper (${br.start_time} - ${br.end_time}). Kies een ander tijdstip.`
                     });
                   }
                 }
@@ -941,6 +945,29 @@ app.put('/api/appointments/:id', authenticateToken, (req, res) => {
     // Map 'service' to 'treatment' for database
     const treatment = req.body.service || req.body.treatment;
 
+    // Niet laten overlappen met een andere afspraak van dezelfde kapper (rekening houdend met duur)
+    const toMin = (t) => { const p = t.split(':'); return parseInt(p[0]) * 60 + parseInt(p[1]); };
+    const newStart = toMin(time);
+    const newEnd = newStart + getDurationByKey(treatment || '', 30);
+    db.all(
+      'SELECT time, treatment, name FROM appointments WHERE date = ? AND barber_name = ? AND status = "active" AND id != ?',
+      [date, barber_name, id],
+      (errO, others) => {
+        if (errO) {
+          console.error('Database error:', errO);
+          return res.status(500).json({ success: false, error: 'Database fout' });
+        }
+        const clash = (others || []).find(o => {
+          const s = toMin(o.time);
+          return newStart < s + getDurationByKey(o.treatment || '', 30) && newEnd > s;
+        });
+        if (clash) {
+          return res.status(409).json({
+            success: false,
+            error: `Dit tijdstip overlapt met de afspraak van ${clash.name} om ${clash.time}`
+          });
+        }
+
     db.run(
       `UPDATE appointments 
        SET name = ?, email = ?, phone = ?, treatment = ?, barber_name = ?, date = ?, time = ?, notes = ?
@@ -966,6 +993,8 @@ app.put('/api/appointments/:id', authenticateToken, (req, res) => {
           success: true,
           message: 'Afspraak succesvol bijgewerkt',
         });
+      }
+    );
       }
     );
   } catch (err) {
@@ -1258,6 +1287,86 @@ app.get('/api/hero-image', (req, res) => {
   }
 });
 
+// ========== WINKELFOTO CONTACTPAGINA ==========
+
+const PAGES_UPLOAD_DIR = path.join(UPLOADS_DIR, 'pages');
+
+// Verwijder het huidige bestand van de contactfoto (indien aanwezig)
+function removeContactImageFile(url) {
+  if (!url || !url.startsWith('/uploads/pages/')) return;
+  const file = path.join(PAGES_UPLOAD_DIR, path.basename(url));
+  require('fs').unlink(file, () => {});
+}
+
+const contactImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      require('fs').mkdirSync(PAGES_UPLOAD_DIR, { recursive: true });
+      cb(null, PAGES_UPLOAD_DIR);
+    },
+    // Unieke naam per upload, zodat browsers nooit een oude versie uit de cache tonen
+    filename: (req, file, cb) => {
+      cb(null, `contact-${Date.now()}${path.extname(file.originalname).toLowerCase()}`);
+    },
+  }),
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png', '.webp'];
+    if (allowed.includes(path.extname(file.originalname).toLowerCase())) {
+      cb(null, true);
+    } else {
+      cb(new Error('Alleen JPG, PNG en WebP zijn toegestaan'));
+    }
+  },
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
+
+app.post('/api/admin/contact-image', authenticateToken, (req, res) => {
+  contactImageUpload.single('image')(req, res, (uploadErr) => {
+    if (uploadErr) {
+      const error = uploadErr.code === 'LIMIT_FILE_SIZE'
+        ? 'De foto is te groot (maximaal 10 MB)'
+        : (uploadErr.message || 'Upload mislukt');
+      return res.status(400).json({ success: false, error });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'Geen bestand geüpload' });
+    }
+    const url = `/uploads/pages/${req.file.filename}`;
+    db.get("SELECT content FROM home_content WHERE section = 'contact_image'", (err, oldRow) => {
+      db.run(
+        "INSERT OR REPLACE INTO home_content (section, content, updated_at) VALUES ('contact_image', ?, datetime('now'))",
+        [url],
+        (err2) => {
+          if (err2) {
+            console.error('Database error:', err2);
+            return res.status(500).json({ success: false, error: 'Opslaan mislukt' });
+          }
+          if (!err && oldRow) removeContactImageFile(oldRow.content);
+          res.json({ success: true, message: 'Foto bijgewerkt!', data: { url } });
+        }
+      );
+    });
+  });
+});
+
+app.delete('/api/admin/contact-image', authenticateToken, (req, res) => {
+  db.get("SELECT content FROM home_content WHERE section = 'contact_image'", (err, row) => {
+    if (err) return res.status(500).json({ success: false, error: 'Database fout' });
+    db.run("DELETE FROM home_content WHERE section = 'contact_image'", (err2) => {
+      if (err2) return res.status(500).json({ success: false, error: 'Verwijderen mislukt' });
+      if (row) removeContactImageFile(row.content);
+      res.json({ success: true, message: 'Foto verwijderd' });
+    });
+  });
+});
+
+app.get('/api/contact-image', (req, res) => {
+  db.get("SELECT content FROM home_content WHERE section = 'contact_image'", (err, row) => {
+    if (err) return res.status(500).json({ success: false, error: 'Fout bij ophalen' });
+    res.json({ success: true, data: { url: row?.content || null } });
+  });
+});
+
 /**
  * POST /api/waitlist
  * Publieke route - inschrijven op wachtlijst
@@ -1372,7 +1481,7 @@ app.delete('/api/admin/waitlist/:id', authenticateToken, (req, res) => {
 // ========== STATIC FILES & FALLBACK ==========
 
 // Mount admin routes
-const adminRouter = createAdminRoutes(db, authenticateToken, servicesMap, invalidateServicesCache);
+const adminRouter = createAdminRoutes(db, authenticateToken, servicesMap, invalidateServicesCache, getDurationByKey);
 app.use('/api/admin', adminRouter);
 
 // Serve static files from the dist folder in production

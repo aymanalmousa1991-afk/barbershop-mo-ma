@@ -36,12 +36,8 @@ function AppContent() {
   const renderPage = () => {
     switch (currentPage) {
       case 'home':
-        return (
-          <>
-            <Hero onNavigate={handleNavigate} />
-            <Services onNavigate={handleNavigate} />
-          </>
-        );
+        // Tarieven staan op een eigen pagina ('services'), niet op de homepagina
+        return <Hero onNavigate={handleNavigate} />;
       case 'about':
         return <AboutPage onNavigate={handleNavigate} />;
       case 'photos':
@@ -63,12 +59,7 @@ function AppContent() {
         }
         return <AdminLogin onNavigate={handleNavigate} />;
       default:
-        return (
-          <>
-            <Hero onNavigate={handleNavigate} />
-            <Services onNavigate={handleNavigate} />
-          </>
-        );
+        return <Hero onNavigate={handleNavigate} />;
     }
   };
 

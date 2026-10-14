@@ -34,7 +34,7 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB max
 });
 
-module.exports = function(db, authenticateToken, servicesMap, invalidateServicesCache) {
+module.exports = function(db, authenticateToken, servicesMap, invalidateServicesCache, getDurationByKey = () => 30) {
 
   // ========== WACHTWOORD RESET ==========
 
@@ -199,6 +199,60 @@ module.exports = function(db, authenticateToken, servicesMap, invalidateServices
     });
   });
 
+  // ========== PAUZES PER KAPPER ==========
+
+  const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const normalizeDays = (days) => {
+    const list = Array.isArray(days) ? days : String(days || '').split(',');
+    return [...new Set(list.map(d => String(d).trim()).filter(d => /^[0-6]$/.test(d)))].sort().join(',');
+  };
+  const validateBreak = (body) => {
+    const { barber_name, start_time, end_time } = body;
+    if (!barber_name || !start_time || !end_time) return 'Kapper, begintijd en eindtijd zijn verplicht';
+    if (!TIME_RE.test(start_time) || !TIME_RE.test(end_time)) return 'Ongeldige tijd (gebruik UU:MM)';
+    if (start_time >= end_time) return 'De eindtijd moet na de begintijd liggen';
+    if (!normalizeDays(body.days)) return 'Kies minstens één dag';
+    return null;
+  };
+
+  router.get('/breaks', authenticateToken, (req, res) => {
+    db.all('SELECT * FROM barber_breaks ORDER BY barber_name ASC, start_time ASC', (err, rows) => {
+      if (err) return res.status(500).json({ success: false, error: 'Pauzes ophalen mislukt' });
+      res.json({ success: true, data: rows || [] });
+    });
+  });
+
+  router.post('/breaks', authenticateToken, (req, res) => {
+    const error = validateBreak(req.body);
+    if (error) return res.status(400).json({ success: false, error });
+    const { barber_name, start_time, end_time } = req.body;
+    const days = normalizeDays(req.body.days);
+    db.run('INSERT INTO barber_breaks (barber_name, start_time, end_time, days) VALUES (?, ?, ?, ?)',
+      [barber_name, start_time, end_time, days], function(err) {
+        if (err) return res.status(500).json({ success: false, error: 'Pauze opslaan mislukt' });
+        res.status(201).json({ success: true, data: { id: this.lastID, barber_name, start_time, end_time, days } });
+      });
+  });
+
+  router.put('/breaks/:id', authenticateToken, (req, res) => {
+    const error = validateBreak(req.body);
+    if (error) return res.status(400).json({ success: false, error });
+    const { barber_name, start_time, end_time } = req.body;
+    db.run('UPDATE barber_breaks SET barber_name=?, start_time=?, end_time=?, days=? WHERE id=?',
+      [barber_name, start_time, end_time, normalizeDays(req.body.days), req.params.id], function(err) {
+        if (err) return res.status(500).json({ success: false, error: 'Pauze bijwerken mislukt' });
+        if (this.changes === 0) return res.status(404).json({ success: false, error: 'Pauze niet gevonden' });
+        res.json({ success: true });
+      });
+  });
+
+  router.delete('/breaks/:id', authenticateToken, (req, res) => {
+    db.run('DELETE FROM barber_breaks WHERE id=?', [req.params.id], function(err) {
+      if (err) return res.status(500).json({ success: false, error: 'Pauze verwijderen mislukt' });
+      res.json({ success: true });
+    });
+  });
+
   // ========== AFSPRAAK VERPLAATSEN ==========
 
   router.post('/appointments/:id/move', authenticateToken, (req, res) => {
@@ -230,13 +284,23 @@ module.exports = function(db, authenticateToken, servicesMap, invalidateServices
   router.post('/appointments', authenticateToken, (req, res) => {
     const { name, email, phone, service, barber_name, date, time, notes } = req.body;
     if (!name || !service || !barber_name || !date || !time) {
-      return res.status(400).json({ success: false, error: 'Alle verplichte velden zijn nodig' });
+      return res.status(400).json({ success: false, error: 'Naam, behandeling, kapper, datum en tijd zijn verplicht' });
     }
 
-    db.get('SELECT * FROM appointments WHERE date=? AND time=? AND barber_name=? AND status="active"',
-      [date, time, barber_name], (err, existing) => {
+    // Admin mag buiten de publieke regels boeken (pauze, weken vooruit, zonder e-mail),
+    // maar niet overlappen met een bestaande afspraak van dezelfde kapper.
+    const toMin = (t) => { const p = t.split(':'); return parseInt(p[0]) * 60 + parseInt(p[1]); };
+    const newStart = toMin(time);
+    const newEnd = newStart + getDurationByKey(service, 30);
+
+    db.all('SELECT time, treatment FROM appointments WHERE date=? AND barber_name=? AND status="active"',
+      [date, barber_name], (err, rows) => {
         if (err) return res.status(500).json({ success: false, error: 'Database fout' });
-        if (existing) return res.status(409).json({ success: false, error: 'Tijdstip al bezet' });
+        const clash = (rows || []).find(r => {
+          const s = toMin(r.time);
+          return newStart < s + getDurationByKey(r.treatment || '', 30) && newEnd > s;
+        });
+        if (clash) return res.status(409).json({ success: false, error: 'Dit tijdstip overlapt met een bestaande afspraak om ' + clash.time });
 
         db.get('SELECT id FROM barbers WHERE name = ?', [barber_name], (err2, barber) => {
           const bid = (!err2 && barber) ? barber.id : null;
@@ -418,7 +482,6 @@ module.exports = function(db, authenticateToken, servicesMap, invalidateServices
         // Bereken omzet per service
         const perServiceMap = {};
         let totalRevenue = 0;
-        const uniqueClients = new Set();
 
         appointments.forEach(r => {
           const svcKey = r.treatment || r.service;
@@ -429,7 +492,6 @@ module.exports = function(db, authenticateToken, servicesMap, invalidateServices
           const price = prices[svcKey] || 0;
           perServiceMap[svcKey].revenue += price;
           totalRevenue += price;
-          if (r.name) uniqueClients.add(r.name.toLowerCase().trim());
         });
 
         const perService = Object.values(perServiceMap);
@@ -460,7 +522,8 @@ module.exports = function(db, authenticateToken, servicesMap, invalidateServices
             period: { from: from || 'begin', to: to || 'einde' },
             totalAppointments,
             totalRevenue,
-            uniqueCustomers: uniqueClients.size,
+            // Op verzoek van de zaak telt elke afspraak als klant (klanten = afspraken)
+            uniqueCustomers: totalAppointments,
             perService,
             barberDistribution,
             busiestDay

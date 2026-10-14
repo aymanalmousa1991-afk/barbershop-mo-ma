@@ -36,3 +36,11 @@ yarn-error.log*
 
 # Misc
 .cache/
+
+# Lokale AI-tool config (bevat API-sleutels)
+.continue/
+
+# SQLite database met klantgegevens
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

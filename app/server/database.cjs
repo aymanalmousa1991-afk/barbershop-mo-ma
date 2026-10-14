@@ -129,6 +129,16 @@ db.serialize(() => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  // Pauzes per kapper (terugkerend; days = weekdagen 0=zo..6=za, komma-gescheiden)
+  db.run(`CREATE TABLE IF NOT EXISTS barber_breaks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    barber_name TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    days TEXT DEFAULT '1,2,3,4,5,6',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
   // Insert default services if table is empty
   db.get('SELECT COUNT(*) as count FROM services', (err, row) => {
     if (err) return;
@@ -209,35 +219,53 @@ db.serialize(() => {
     (err) => { if (err) console.error('Migratie opening_inloop mislukt:', err); }
   );
 
-  // Create or update admin user
-  const adminPasswordHash = bcrypt.hashSync('Barber123!', 10);
+  // Migratie: de oude gezamenlijke pauze (break_enabled/start/end) omzetten naar
+  // een pauze per kapper. Gebeurt één keer; daarna wordt de oude pauze uitgezet.
+  db.all("SELECT section, content FROM home_content WHERE section IN ('break_enabled','break_start','break_end','breaks_migrated')", (err, rows) => {
+    if (err) return console.error('Pauze-migratie mislukt:', err);
+    const cfg = {};
+    (rows || []).forEach(r => { cfg[r.section] = r.content; });
+    if (cfg.breaks_migrated === '1') return;
+    const enabled = cfg.break_enabled === '1' || cfg.break_enabled === 'true';
+    const finish = () => {
+      db.run("INSERT OR REPLACE INTO home_content (section, content) VALUES ('breaks_migrated', '1')");
+      db.run("UPDATE home_content SET content = '0' WHERE section = 'break_enabled'");
+    };
+    if (!enabled || !cfg.break_start || !cfg.break_end) return finish();
+    db.all('SELECT name FROM barbers', (err2, barbers) => {
+      if (err2) return console.error('Pauze-migratie mislukt:', err2);
+      const insert = db.prepare('INSERT INTO barber_breaks (barber_name, start_time, end_time) VALUES (?, ?, ?)');
+      (barbers || []).forEach(b => insert.run(b.name, cfg.break_start, cfg.break_end));
+      insert.finalize(() => {
+        finish();
+        console.log('✅ Gezamenlijke pauze omgezet naar pauze per kapper');
+      });
+    });
+  });
+
+  // Create admin user only if it doesn't exist yet.
+  // Een bestaand wachtwoord wordt NIET overschreven, zodat wijzigingen via de admin behouden blijven.
+  // Startwachtwoord voor een nieuwe database: ADMIN_PASSWORD (env), anders de oude standaard.
   db.get('SELECT COUNT(*) as count FROM admin WHERE username = ?', ['admin'], (err, row) => {
     if (err) {
       console.error('❌ Error checking admin:', err);
       return;
     }
     if (row.count === 0) {
+      const initialPassword = process.env.ADMIN_PASSWORD || 'Barber123!';
+      const adminPasswordHash = bcrypt.hashSync(initialPassword, 10);
       db.run('INSERT INTO admin (username, passwordHash, role) VALUES (?, ?, ?)',
         ['admin', adminPasswordHash, 'admin'],
         (err) => {
           if (err) {
             console.error('❌ Error creating admin user:', err);
           } else {
-            console.log('✅ Admin user created (username: admin, password: Barber123!)');
+            console.log('✅ Admin user created (username: admin) - wijzig het wachtwoord direct na inloggen');
           }
         }
       );
     } else {
-      db.run('UPDATE admin SET passwordHash = ? WHERE username = ?',
-        [adminPasswordHash, 'admin'],
-        (err) => {
-          if (err) {
-            console.error('❌ Error updating admin password:', err);
-          } else {
-            console.log('ℹ️  Admin user exists, password synced');
-          }
-        }
-      );
+      console.log('ℹ️  Admin user exists');
     }
   });
 

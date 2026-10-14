@@ -18,6 +18,11 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
+      // Geüploade foto's (hero, winkelfoto) komen ook van de backend
+      '/uploads': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
     },
   },
 });

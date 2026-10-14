@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, Upload, Trash2, X } from 'lucide-react';
+import { ContactImageEditor } from './ContactImageEditor';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const UPLOADS_URL = API_URL.replace('/api', '/uploads/');
@@ -52,6 +53,10 @@ export function AdminPhotoManagement() {
   return (
     <div>
       <h1 className="text-3xl font-bold text-[#1a1a1a] logo-font mb-8">Foto Beheer</h1>
+      <div className="mb-6">
+        <ContactImageEditor />
+      </div>
+      <h2 className="text-xl font-bold text-[#1a1a1a] mb-4">Fotogalerij</h2>
       <div className="grid md:grid-cols-2 gap-6">
         <Card className="border-0 shadow-lg">
           <CardHeader className="bg-gradient-to-r from-[#6b0f1a] to-[#8b1523]"><CardTitle className="text-white flex items-center gap-2"><Upload className="h-5 w-5 text-[#d4af37]" />Foto Uploaden</CardTitle></CardHeader>
