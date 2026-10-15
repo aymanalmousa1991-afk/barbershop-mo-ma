@@ -138,6 +138,9 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     return barber?.name || barberName;
   };
 
+  // Afspraak waarvan de details getoond worden (klik op een blok in de agenda)
+  const [detailApt, setDetailApt] = useState<Appointment | null>(null);
+
   // Nieuwe afspraak toevoegen
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [addBarber, setAddBarber] = useState('');
@@ -557,56 +560,61 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                                 const dur = serviceMap[apt.service]?.duration || 30;
                                 const endMin = toMin(apt.time) + dur;
                                 const spanRows = rowsOf(apt);
-                                const single = spanRows === 1;
                                 // Gekleurd blok = echte duur; de rest van het geblokkeerde kwartier blijft wit,
                                 // zodat de kapper ziet hoeveel minuten hij vrij heeft (bijv. 10:10–10:15)
                                 const offsetPx = ((toMin(apt.time) - rowOf(apt)) / QUARTER) * ROW_HEIGHT;
                                 const blockPx = Math.max(14, (dur / QUARTER) * ROW_HEIGHT - 2);
+                                // Indeling op basis van de echte hoogte: kort = 1 regel, middel = 2 regels, groot = alles
+                                const layout = blockPx < 30 ? 'compact' : blockPx < 52 ? 'medium' : 'full';
+                                const serviceName = serviceMap[apt.service]?.name || apt.service;
+                                const noteIcon = apt.notes ? <MessageSquare className="h-3 w-3 flex-shrink-0 text-amber-600" /> : null;
                                 return (
                                   <td key={key} rowSpan={spanRows} className="align-top p-0 border-t border-stone-100 bg-white">
                                     {/* Vaste hoogte: inhoud mag de kwartierrijen niet oprekken */}
                                     <div className="relative" style={{ height: spanRows * ROW_HEIGHT - 1 }}>
                                     <div
-                                      className={'group absolute left-0.5 right-0.5 overflow-hidden rounded-sm border-l-4 px-1 flex flex-col ' + (single ? 'justify-center' : 'py-0.5') + ' ' + color.light + ' ' + color.border}
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() => setDetailApt(apt)}
+                                      onKeyDown={(e) => { if (e.key === 'Enter') setDetailApt(apt); }}
+                                      title={`${apt.time}–${fmt(endMin)} (${dur} min) · ${apt.name} · ${serviceName}${apt.notes ? ' · Opmerking: ' + apt.notes : ''}`}
+                                      className={'group absolute left-0.5 right-0.5 overflow-hidden rounded-sm border-l-4 px-1 flex flex-col cursor-pointer hover:brightness-95 ' + (layout === 'compact' ? 'justify-center' : 'py-0.5') + ' ' + color.light + ' ' + color.border}
                                       style={{ top: offsetPx + 1, height: blockPx }}
                                     >
-                                      {single ? (
-                                        <p
-                                          className={'text-[11px] leading-tight truncate flex items-center gap-1 ' + color.text + (apt.notes ? ' cursor-pointer' : '')}
-                                          title={apt.notes || undefined}
-                                          onClick={apt.notes ? () => toast(`Opmerking van ${apt.name}`, { description: apt.notes }) : undefined}
-                                        >
-                                          {apt.notes && <MessageSquare className="h-3 w-3 flex-shrink-0 text-amber-600" />}
+                                      {layout === 'compact' && (
+                                        <p className={'text-[11px] leading-tight truncate flex items-center gap-1 ' + color.text}>
+                                          {noteIcon}
                                           <span className="font-semibold text-stone-600">{apt.time}</span>
                                           <span className="font-bold truncate">{apt.name}</span>
-                                          <span className="text-stone-500 whitespace-nowrap">{dur} min</span>
-                                          <span className="text-stone-400 truncate">{serviceMap[apt.service]?.name || apt.service}</span>
+                                          <span className="text-stone-500 truncate">{serviceName}</span>
                                         </p>
-                                      ) : (<>
-                                      <p className="text-[10px] font-semibold text-stone-600 leading-tight">
-                                        {apt.time}&nbsp;&ndash;&nbsp;{fmt(endMin)}
-                                        <span className="font-normal text-stone-500"> &middot; {dur} min</span>
-                                      </p>
-                                      <p className={'text-[11px] font-bold leading-tight truncate flex items-center gap-1 ' + color.text}>
-                                        {apt.notes && <MessageSquare className="h-3 w-3 flex-shrink-0 text-amber-600" />}
-                                        <span className="truncate">{apt.name}</span>
-                                      </p>
-                                      <p className="text-[10px] text-stone-400 leading-tight truncate">{serviceMap[apt.service]?.name || apt.service}</p>
-                                      </>)}
-                                      {apt.notes && !single && (
-                                        // Opmerking van de klant: ingekort in de cel, volledig bij hover of klik
-                                        <button
-                                          type="button"
-                                          title={apt.notes}
-                                          onClick={() => toast(`Opmerking van ${apt.name}`, { description: apt.notes })}
-                                          className="block w-full text-left text-[10px] italic text-amber-700 leading-tight truncate hover:underline"
-                                        >
-                                          {apt.notes}
-                                        </button>
                                       )}
+                                      {layout === 'medium' && (<>
+                                        <p className="text-[10px] font-semibold text-stone-600 leading-tight truncate">
+                                          {apt.time}&nbsp;&ndash;&nbsp;{fmt(endMin)}
+                                          <span className="font-normal text-stone-500"> &middot; {dur} min</span>
+                                        </p>
+                                        <p className={'text-[11px] leading-tight truncate flex items-center gap-1 ' + color.text}>
+                                          {noteIcon}
+                                          <span className="font-bold truncate">{apt.name}</span>
+                                          <span className="text-stone-500 truncate">{serviceName}</span>
+                                        </p>
+                                      </>)}
+                                      {layout === 'full' && (<>
+                                        <p className="text-[10px] font-semibold text-stone-600 leading-tight truncate">
+                                          {apt.time}&nbsp;&ndash;&nbsp;{fmt(endMin)}
+                                          <span className="font-normal text-stone-500"> &middot; {dur} min</span>
+                                        </p>
+                                        <p className={'text-[11px] font-bold leading-tight truncate flex items-center gap-1 ' + color.text}>
+                                          {noteIcon}
+                                          <span className="truncate">{apt.name}</span>
+                                        </p>
+                                        <p className="text-[10px] text-stone-500 leading-tight truncate">{serviceName}</p>
+                                        {apt.notes && <p className="text-[10px] italic text-amber-700 leading-tight truncate">{apt.notes}</p>}
+                                      </>)}
                                       <div className="absolute top-0 right-0 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded p-0.5">
-                                        <button onClick={()=>{setAppointmentToMove(apt);setMoveDate(apt.date);setMoveTime(apt.time);setMoveDialogOpen(true);}} className="text-blue-500 hover:text-blue-700 p-0.5"><ArrowRight className="h-3 w-3"/></button>
-                                        <button onClick={()=>{setAppointmentToDelete(apt);setDeleteDialogOpen(true);}} className="text-red-500 hover:text-red-700 p-0.5"><Trash2 className="h-3 w-3"/></button>
+                                        <button onClick={(e)=>{e.stopPropagation();setAppointmentToMove(apt);setMoveDate(apt.date);setMoveTime(apt.time);setMoveDialogOpen(true);}} className="text-blue-500 hover:text-blue-700 p-0.5" title="Verplaatsen"><ArrowRight className="h-3 w-3"/></button>
+                                        <button onClick={(e)=>{e.stopPropagation();setAppointmentToDelete(apt);setDeleteDialogOpen(true);}} className="text-red-500 hover:text-red-700 p-0.5" title="Verwijderen"><Trash2 className="h-3 w-3"/></button>
                                       </div>
                                     </div>
                                     </div>
@@ -787,6 +795,46 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
       {/* Password Change Dialog */}
       {passwordDialogOpen && <PasswordChangeDialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} />}
+
+      {/* Details van een afspraak (klik op een blok in de agenda) */}
+      <Dialog open={!!detailApt} onOpenChange={(open) => { if (!open) setDetailApt(null); }}>
+        <DialogContent className="sm:max-w-md">
+          {detailApt && (() => {
+            const dur = serviceMap[detailApt.service]?.duration || 30;
+            const [h, m] = detailApt.time.split(':').map(Number);
+            const endMin = h * 60 + m + dur;
+            const end = String(Math.floor(endMin / 60)).padStart(2, '0') + ':' + String(endMin % 60).padStart(2, '0');
+            return (<>
+              <DialogHeader>
+                <DialogTitle className="text-xl">{detailApt.name}</DialogTitle>
+                <DialogDescription>
+                  {format(parseISO(detailApt.date), 'EEEE d MMMM yyyy', { locale: nl })} &middot; {detailApt.time} – {end} ({dur} min)
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2 text-sm">
+                <p className="flex items-center gap-2"><Scissors className="h-4 w-4 text-[#6b0f1a]" />{serviceMap[detailApt.service]?.name || detailApt.service}</p>
+                <p className="flex items-center gap-2"><User className="h-4 w-4 text-[#6b0f1a]" />Kapper: {getBarberDisplayName(detailApt.barber_name || '')}</p>
+                {detailApt.phone && <p className="flex items-center gap-2"><Phone className="h-4 w-4 text-[#6b0f1a]" /><a href={'tel:' + detailApt.phone} className="hover:underline">{detailApt.phone}</a></p>}
+                {detailApt.email && <p className="flex items-center gap-2"><Mail className="h-4 w-4 text-[#6b0f1a]" /><a href={'mailto:' + detailApt.email} className="hover:underline">{detailApt.email}</a></p>}
+                {detailApt.notes && (
+                  <div className="rounded-md bg-amber-50 border border-amber-200 p-3">
+                    <p className="flex items-center gap-2 font-semibold text-amber-800 mb-1"><MessageSquare className="h-4 w-4" />Opmerking van de klant</p>
+                    <p className="text-amber-900 whitespace-pre-wrap">{detailApt.notes}</p>
+                  </div>
+                )}
+              </div>
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => { const a = detailApt; setDetailApt(null); setAppointmentToMove(a); setMoveDate(a.date); setMoveTime(a.time); setMoveDialogOpen(true); }} className="border-blue-500 text-blue-600">
+                  <ArrowRight className="h-4 w-4 mr-1" />Verplaatsen
+                </Button>
+                <Button variant="destructive" onClick={() => { const a = detailApt; setDetailApt(null); setAppointmentToDelete(a); setDeleteDialogOpen(true); }}>
+                  <Trash2 className="h-4 w-4 mr-1" />Verwijderen
+                </Button>
+              </DialogFooter>
+            </>);
+          })()}
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
