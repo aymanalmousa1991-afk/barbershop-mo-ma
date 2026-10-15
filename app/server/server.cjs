@@ -8,6 +8,7 @@ const cron = require('node-cron');
 const multer = require('multer');
 const { sendConfirmationEmail, sendReminderEmail, verifyEmailConfig } = require('./emailConfig.cjs');
 const createAdminRoutes = require('./adminRoutes.cjs');
+const slots = require('./slots.cjs');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -57,6 +58,62 @@ function getBarberBreaks(barber_name, date, callback) {
       return callback([]);
     }
     callback((rows || []).filter(b => (b.days || '').split(',').includes(weekday)));
+  });
+}
+
+// Blok van de kortste actieve behandeling; bepaalt wat een "dood" gaatje is
+function minServiceBlock() {
+  const durations = cachedServices.map(s => Number(s.duration)).filter(d => d > 0);
+  return durations.length ? slots.blockMinutes(Math.min(...durations)) : slots.QUARTER;
+}
+
+// Alles wat de dag van een kapper bezet houdt: afspraken (afgerond op kwartieren), afwezigheid en pauzes.
+// excludeId: afspraak die genegeerd wordt (bijv. de afspraak die verplaatst wordt)
+function getBusyIntervals(barber_name, date, excludeId, callback) {
+  db.all(
+    'SELECT id, time, treatment FROM appointments WHERE date = ? AND barber_name = ? AND status = "active"',
+    [date, barber_name],
+    (err, rows) => {
+      if (err) return callback(err);
+      db.all('SELECT * FROM barber_absences WHERE barber_name = ? AND date = ?', [barber_name, date], (err2, absences) => {
+        if (err2) return callback(err2);
+        getBarberBreaks(barber_name, date, (breaks) => {
+          const busy = [];
+          (rows || []).filter(r => String(r.id) !== String(excludeId)).forEach(r => {
+            const start = slots.toMin(r.time);
+            busy.push({ start, end: start + slots.blockMinutes(getDurationByKey(r.treatment || '', 30)), appointment: r });
+          });
+          let fullDay = false;
+          (absences || []).forEach(a => {
+            if (a.is_full_day) fullDay = true;
+            else if (a.start_time && a.end_time) busy.push({ start: slots.toMin(a.start_time), end: slots.toMin(a.end_time) });
+          });
+          breaks.forEach(b => busy.push({ start: slots.toMin(b.start_time), end: slots.toMin(b.end_time) }));
+          callback(null, { busy, fullDay });
+        });
+      });
+    }
+  );
+}
+
+// Slimme starttijden die een klant ziet voor deze kapper, datum en behandeling (zie slots.cjs)
+function getSmartSlots(barber_name, date, service, callback) {
+  const hours = slots.openingHoursFor(date);
+  const today = localDateStr();
+  if (!hours || date < today) return callback(null, []);
+  getBusyIntervals(barber_name, date, null, (err, ctx) => {
+    if (err) return callback(err);
+    if (ctx.fullDay) return callback(null, []);
+    const now = new Date();
+    const earliestMin = date === today ? now.getHours() * 60 + now.getMinutes() : 0;
+    callback(null, slots.computeSmartSlots({
+      openMin: hours.open * 60,
+      closeMin: hours.close * 60,
+      busy: ctx.busy,
+      duration: getDurationByKey(service || '', 30),
+      minBlock: minServiceBlock(),
+      earliestMin,
+    }));
   });
 }
 
@@ -113,14 +170,40 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+// Ingelogde admin (geldige token) telt niet mee voor de limiet: het dashboard ververst automatisch
+// en de zaak deelt vaak één IP-adres (wifi) met klanten die boeken.
+function isAuthenticatedAdmin(req) {
+  const token = (req.headers.authorization || '').split(' ')[1];
+  if (!token) return false;
+  try {
+    jwt.verify(token, JWT_SECRET);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 600,
+  skip: isAuthenticatedAdmin,
   message: { success: false, error: 'Te veel verzoeken. Probeer het later opnieuw.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 app.use('/api/', apiLimiter);
+
+// Strengere limiet op het aanmaken van afspraken en wachtlijst-inschrijvingen (tegen spam/nepboekingen)
+const bookingLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  skip: (req) => req.method !== 'POST' || isAuthenticatedAdmin(req),
+  message: { success: false, error: 'Je hebt te veel afspraken achter elkaar gemaakt. Probeer het over een kwartier opnieuw of bel ons op 06-85171198.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/appointments', (req, res, next) => (req.path === '/' ? bookingLimiter(req, res, next) : next()));
+app.use('/api/waitlist', bookingLimiter);
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -183,7 +266,7 @@ app.post('/api/auth/login', (req, res) => {
     }
 
     // Query database - check admin table
-    db.get('SELECT * FROM admin WHERE username = ?', [username], (err, user) => {
+    db.get('SELECT * FROM admin WHERE username = ? COLLATE NOCASE', [String(username).trim()], (err, user) => {
       if (err) {
         console.error('Database error:', err);
         return res.status(500).json({ 
@@ -354,161 +437,22 @@ app.get('/api/appointments/public', (req, res) => {
  * Get available time slots for a specific date and barber (houdt rekening met afwezigheid)
  */
 app.get('/api/appointments/available-slots', (req, res) => {
-  try {
-    const { date, barber_name, service } = req.query;
+  const { date, barber_name, service } = req.query;
 
-    if (!date || !barber_name) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Datum en kapper zijn verplicht' 
-      });
-    }
-
-  // Opening hours per day (0=Sun, 1=Mon, ..., 6=Sat)
-    const openingHours = {
-      1: { open: 10, close: 18 },
-      2: { open: 9, close: 18 },
-      3: { open: 9, close: 18 },
-      4: { open: 9, close: 18 },
-      5: { open: 9, close: 18 },
-      6: { open: 8, close: 17 },
-    };
-    const dateObj = new Date(date + "T12:00:00");
-    const dayOfWeek = dateObj.getDay();
-    const todayHours = openingHours[dayOfWeek];
-        const allSlots = [];
-    if (todayHours) {
-      for (let h = todayHours.open; h < todayHours.close; h++) {
-        for (let m = 0; m < 60; m += 5) {
-          allSlots.push(String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"));
-        }
-      }
-    }
-
-        const requestedDuration = getDurationByKey(service || "", 30);
-    const CLOSING_MIN = todayHours ? todayHours.close * 60 : 18 * 60;
-
-    const toMin = (t) => { const p = t.split(":"); return parseInt(p[0]) * 60 + parseInt(p[1]); };
-
-    // Get booked slots (with treatment) for this date and barber
-    db.all(
-      'SELECT time, treatment FROM appointments WHERE date = ? AND barber_name = ? AND status = "active"',
-      [date, barber_name],
-      (err, rows) => {
-        if (err) {
-          console.error('Database error:', err);
-          return res.status(500).json({ 
-            success: false,
-            error: 'Beschikbare tijden konden niet worden opgehaald' 
-          });
-        }
-
-                // Block all 15-min start times that overlap with existing appointments
-                const blockedSlotsSet = new Set();
-                rows.forEach(row => {
-                  const dur = getDurationByKey(row.treatment || "", 30);
-                  const existingStart = toMin(row.time);
-                  const existingEnd = existingStart + dur;
-                  allSlots.forEach(slot => {
-                    const slotMin = toMin(slot);
-                    // Een slot is geblokkeerd als een nieuwe afspraak (startend op slotMin, duur=requestedDuration)
-                    // overlapt met de bestaande afspraak (start=existingStart, eind=existingEnd)
-                    if (slotMin < existingEnd && slotMin + requestedDuration > existingStart) {
-                      blockedSlotsSet.add(slot);
-                    }
-                  });
-                });
-
-                // Block slots that would end after closing time (18:00)
-        allSlots.forEach(slot => {
-          const slotMin = toMin(slot);
-          if (slotMin + requestedDuration > CLOSING_MIN) {
-            blockedSlotsSet.add(slot);
-          }
-        });
-
-                // Block verleden tijd voor vandaag
-                const now = new Date();
-                const todayStr = localDateStr(now);
-                if (date === todayStr) {
-                  // Gebruik lokale uren/minuten (zelfde timezone als de slots)
-                  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-                  allSlots.forEach(slot => {
-                    const slotMin = toMin(slot);
-                    // Blokkeer als de starttijd al voorbij is
-                    if (slotMin < currentMinutes) {
-                      blockedSlotsSet.add(slot);
-                    }
-                  });
-                }
-
-                const bookedTimes = rows.map(row => row.time);
-
-                // Check afwezigheid voor deze kapper op deze datum
-        db.all(
-          'SELECT * FROM barber_absences WHERE barber_name = ? AND date = ?',
-          [barber_name, date],
-          (err2, absences) => {
-            let blockedTimes = [];
-            if (absences && absences.length > 0) {
-              for (const absence of absences) {
-                if (absence.is_full_day) {
-                  // Volledige dag geblokkeerd
-                  blockedTimes = [...allSlots];
-                  break;
-                }
-                if (absence.start_time && absence.end_time) {
-                  // Blok van start_time tot end_time blokkeren
-                  for (const slot of allSlots) {
-                    if (slot >= absence.start_time && slot < absence.end_time) {
-                      blockedTimes.push(slot);
-                    }
-                  }
-                }
-              }
-            }
-
-            // Pauzes van deze kapper op deze weekdag
-            getBarberBreaks(barber_name, date, (breaks) => {
-                for (const br of breaks) {
-                  const bStart = toMin(br.start_time);
-                  const bEnd = toMin(br.end_time);
-                  for (const slot of allSlots) {
-                    const slotMin = toMin(slot);
-                    // Blokkeer het slot als de nieuwe afspraak (slotMin + duur) OVERLAPT met de pauze
-                    if (slotMin < bEnd && slotMin + requestedDuration > bStart) {
-                      blockedTimes.push(slot);
-                    }
-                  }
-                }
-
-                // Verwijder geboekte en geblokkeerde tijden
-                const unavailableSlots = [...new Set([...bookedTimes, ...blockedTimes, ...Array.from(blockedSlotsSet)])];
-                const availableSlots = allSlots.filter(slot => !unavailableSlots.includes(slot));
-
-                res.json({
-                  success: true,
-                  data: {
-                    date,
-                    barber_name,
-                    availableSlots,
-                    bookedSlots: bookedTimes,
-                    blockedSlots: blockedTimes
-                  }
-                });
-              }
-            );
-          }
-        );
-      }
-    );
-  } catch (err) {
-    console.error('Error:', err);
-    res.status(500).json({ 
-      success: false,
-      error: 'Interne server fout' 
-    });
+  if (!date || !barber_name) {
+    return res.status(400).json({ success: false, error: 'Datum en kapper zijn verplicht' });
   }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ success: false, error: 'Ongeldige datum' });
+  }
+
+  getSmartSlots(barber_name, date, service, (err, availableSlots) => {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ success: false, error: 'Beschikbare tijden konden niet worden opgehaald' });
+    }
+    res.json({ success: true, data: { date, barber_name, availableSlots } });
+  });
 });
 
 /**
@@ -595,7 +539,7 @@ app.post('/api/appointments', (req, res) => {
       }
 
         // === VALIDATIE: Check overlap met bestaande afspraken (rekening houdend met duur) ===
-    const newDuration = getDurationByKey(service || "", 30);
+    const newDuration = slots.blockMinutes(getDurationByKey(service || "", 30));
     const newStartMin = parseInt(time.split(":")[0]) * 60 + parseInt(time.split(":")[1]);
     const newEndMin = newStartMin + newDuration;
 
@@ -610,7 +554,7 @@ app.post('/api/appointments', (req, res) => {
         }
 
         for (const existing of existingSlots) {
-          const existingDur = getDurationByKey(existing.treatment || "", 30);
+          const existingDur = slots.blockMinutes(getDurationByKey(existing.treatment || "", 30));
           const existingStart = parseInt(existing.time.split(":")[0]) * 60 + parseInt(existing.time.split(":")[1]);
           const existingEnd = existingStart + existingDur;
           
@@ -672,6 +616,19 @@ app.post('/api/appointments', (req, res) => {
                   }
                 }
 
+            // Laatste controle: alleen tijden die we klanten ook aanbieden (slimme tijden zonder gaatjes)
+            getSmartSlots(barber_name, date, service, (errS, allowedTimes) => {
+              if (errS) {
+                console.error('Database error:', errS);
+                return res.status(500).json({ success: false, error: 'Database fout' });
+              }
+              if (!allowedTimes.includes(time)) {
+                return res.status(409).json({
+                  success: false,
+                  error: 'Dit tijdstip is niet (meer) beschikbaar. Kies een van de getoonde tijden.'
+                });
+              }
+
             // Get barberId
             db.get('SELECT id FROM barbers WHERE name = ?', [barber_name], (err3, barber) => {
               const bid = (!err3 && barber) ? barber.id : null;
@@ -724,6 +681,7 @@ app.post('/api/appointments', (req, res) => {
                   });
                                 }
               );
+            });
             });
               }
             );
@@ -954,7 +912,7 @@ app.put('/api/appointments/:id', authenticateToken, (req, res) => {
     // Niet laten overlappen met een andere afspraak van dezelfde kapper (rekening houdend met duur)
     const toMin = (t) => { const p = t.split(':'); return parseInt(p[0]) * 60 + parseInt(p[1]); };
     const newStart = toMin(time);
-    const newEnd = newStart + getDurationByKey(treatment || '', 30);
+    const newEnd = newStart + slots.blockMinutes(getDurationByKey(treatment || '', 30));
     db.all(
       'SELECT time, treatment, name FROM appointments WHERE date = ? AND barber_name = ? AND status = "active" AND id != ?',
       [date, barber_name, id],
@@ -965,7 +923,7 @@ app.put('/api/appointments/:id', authenticateToken, (req, res) => {
         }
         const clash = (others || []).find(o => {
           const s = toMin(o.time);
-          return newStart < s + getDurationByKey(o.treatment || '', 30) && newEnd > s;
+          return newStart < s + slots.blockMinutes(getDurationByKey(o.treatment || '', 30)) && newEnd > s;
         });
         if (clash) {
           return res.status(409).json({

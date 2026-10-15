@@ -694,33 +694,43 @@ const WEEKDAYS = [
 function BarberBreaksManager() {
   const [barbers, setBarbers] = useState<{ name: string; display_name: string }[]>([]);
   const [breaks, setBreaks] = useState<BarberBreak[]>([]);
-  // Lokale, nog niet opgeslagen wijzigingen per pauze-id
+  // Niet-opgeslagen wijzigingen per pauze-id. Nieuwe (nog niet opgeslagen) pauzes hebben een negatief id.
   const [drafts, setDrafts] = useState<Record<number, BarberBreak>>({});
   const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<number | string | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
   const token = localStorage.getItem('token');
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const hasUnsaved = Object.keys(drafts).length > 0;
 
-  const load = async () => {
-    try {
-      const [bRes, brRes] = await Promise.all([
-        fetch(`${API_URL}/admin/barbers`, { headers }),
-        fetch(`${API_URL}/admin/breaks`, { headers }),
-      ]);
-      const bData = await bRes.json();
-      const brData = await brRes.json();
-      if (bData.success) setBarbers((bData.data || []).filter((b: any) => b.is_active));
-      if (brData.success) setBreaks(brData.data || []);
-      setDrafts({});
-    } catch (err) {
-      console.error(err);
-      toast.error('Pauzes laden mislukt');
-    } finally {
-      setLoading(false);
-    }
+  const loadBreaks = async () => {
+    const res = await fetch(`${API_URL}/admin/breaks`, { headers });
+    const data = await res.json();
+    if (data.success) setBreaks(data.data || []);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/admin/barbers`, { headers });
+        const data = await res.json();
+        if (data.success) setBarbers((data.data || []).filter((b: any) => b.is_active));
+        await loadBreaks();
+      } catch (err) {
+        console.error(err);
+        toast.error('Pauzes laden mislukt');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  // Waarschuw bij het sluiten/verversen van de pagina als er nog niet-opgeslagen pauzes zijn
+  useEffect(() => {
+    if (!hasUnsaved) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [hasUnsaved]);
 
   const request = async (url: string, method: string, body?: object) => {
     const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
@@ -729,27 +739,33 @@ function BarberBreaksManager() {
     return data;
   };
 
-  const addBreak = async (barber_name: string) => {
-    setBusyId('new-' + barber_name);
-    try {
-      await request(`${API_URL}/admin/breaks`, 'POST', {
-        barber_name, start_time: '12:30', end_time: '13:00', days: WEEKDAYS.map(d => d.value),
-      });
-      toast.success('Pauze toegevoegd - pas de tijden aan en sla op');
-      await load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Toevoegen mislukt');
-    } finally {
-      setBusyId(null);
-    }
+  // Alleen de draft van deze pauze weghalen; wijzigingen aan andere pauzes blijven staan
+  const dropDraft = (id: number) => setDrafts(prev => { const next = { ...prev }; delete next[id]; return next; });
+
+  // Nieuwe pauze: eerst alleen lokaal, pas opgeslagen na "Opslaan"
+  const addBreak = (barber_name: string) => {
+    const id = -Date.now();
+    setDrafts(prev => ({ ...prev, [id]: { id, barber_name, start_time: '', end_time: '', days: WEEKDAYS.map(d => d.value).join(',') } }));
+  };
+
+  const validate = (br: BarberBreak): string | null => {
+    if (!br.start_time || !br.end_time) return 'Vul een begin- en eindtijd in';
+    if (br.start_time >= br.end_time) return 'De eindtijd moet na de begintijd liggen';
+    if (!br.days.split(',').filter(Boolean).length) return 'Kies minstens één dag';
+    return null;
   };
 
   const saveBreak = async (br: BarberBreak) => {
+    const problem = validate(br);
+    if (problem) { toast.error(problem); return; }
     setBusyId(br.id);
     try {
-      await request(`${API_URL}/admin/breaks/${br.id}`, 'PUT', br);
-      toast.success('Pauze opgeslagen');
-      await load();
+      const body = { barber_name: br.barber_name, start_time: br.start_time, end_time: br.end_time, days: br.days.split(',').filter(Boolean) };
+      if (br.id < 0) await request(`${API_URL}/admin/breaks`, 'POST', body);
+      else await request(`${API_URL}/admin/breaks/${br.id}`, 'PUT', body);
+      dropDraft(br.id);
+      await loadBreaks();
+      toast.success(`Pauze ${br.start_time}–${br.end_time} opgeslagen`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Opslaan mislukt');
     } finally {
@@ -757,12 +773,15 @@ function BarberBreaksManager() {
     }
   };
 
-  const deleteBreak = async (id: number) => {
-    setBusyId(id);
+  const deleteBreak = async (br: BarberBreak) => {
+    if (br.id < 0) { dropDraft(br.id); return; } // nieuwe pauze die nog niet bestond
+    if (!confirm(`Pauze ${br.start_time}–${br.end_time} verwijderen?`)) return;
+    setBusyId(br.id);
     try {
-      await request(`${API_URL}/admin/breaks/${id}`, 'DELETE');
+      await request(`${API_URL}/admin/breaks/${br.id}`, 'DELETE');
+      dropDraft(br.id);
+      await loadBreaks();
       toast.success('Pauze verwijderd');
-      await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Verwijderen mislukt');
     } finally {
@@ -794,28 +813,43 @@ function BarberBreaksManager() {
           Klanten kunnen tijdens een pauze geen afspraak boeken; in de agenda zie je de pauze grijs.
         </p>
 
+        {hasUnsaved && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            Je hebt pauzes die nog <strong>niet zijn opgeslagen</strong>. Klik bij elke gele pauze op <strong>Opslaan</strong>, anders gelden ze niet.
+          </div>
+        )}
+
         {loading ? (
           <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-stone-500" /></div>
         ) : barbers.map(barber => {
-          const barberBreaks = breaks.filter(b => b.barber_name === barber.name);
+          const saved = breaks.filter(b => b.barber_name === barber.name);
+          const added = Object.values(drafts).filter(d => d.id < 0 && d.barber_name === barber.name);
+          const rows = [...saved, ...added];
           return (
             <div key={barber.name} className="border rounded-lg p-3 sm:p-4">
               <div className="flex items-center justify-between gap-2 mb-3">
                 <h3 className="font-bold text-[#6b0f1a]">{barber.display_name}</h3>
-                <Button size="sm" variant="outline" onClick={() => addBreak(barber.name)} disabled={busyId === 'new-' + barber.name}>
-                  {busyId === 'new-' + barber.name ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Plus className="h-4 w-4 mr-1" />Pauze</>}
+                <Button size="sm" variant="outline" onClick={() => addBreak(barber.name)}>
+                  <Plus className="h-4 w-4 mr-1" />Pauze
                 </Button>
               </div>
 
-              {barberBreaks.length === 0 && <p className="text-sm text-stone-400">Geen pauzes ingesteld.</p>}
+              {rows.length === 0 && <p className="text-sm text-stone-400">Geen pauzes ingesteld.</p>}
 
               <div className="space-y-3">
-                {barberBreaks.map(original => {
+                {rows.map(original => {
                   const br = drafts[original.id] || original;
+                  const isNew = original.id < 0;
                   const dirty = !!drafts[original.id];
                   const days = br.days.split(',');
+                  const busy = busyId === original.id;
                   return (
-                    <div key={original.id} className={'rounded-md p-3 space-y-3 ' + (dirty ? 'bg-amber-50 border border-amber-200' : 'bg-stone-50')}>
+                    <div key={original.id} className={'rounded-md p-3 space-y-3 ' + (dirty ? 'bg-amber-50 border border-amber-300' : 'bg-stone-50')}>
+                      {dirty && (
+                        <p className="text-xs font-semibold text-amber-700">
+                          {isNew ? 'Nieuwe pauze – vul de tijden in en klik op Opslaan' : 'Gewijzigd – nog niet opgeslagen'}
+                        </p>
+                      )}
                       <div className="flex flex-wrap items-end gap-3">
                         <div>
                           <Label className="text-xs">Van</Label>
@@ -826,12 +860,15 @@ function BarberBreaksManager() {
                           <Input type="time" step={300} value={br.end_time} onChange={(e) => updateDraft(original, { end_time: e.target.value })} className="mt-1 w-28" />
                         </div>
                         <div className="flex gap-2 ml-auto">
+                          {dirty && !isNew && (
+                            <Button size="sm" variant="ghost" onClick={() => dropDraft(original.id)} disabled={busy}>Annuleren</Button>
+                          )}
                           {dirty && (
-                            <Button size="sm" onClick={() => saveBreak(br)} disabled={busyId === original.id} className="bg-[#6b0f1a]">
-                              {busyId === original.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" />Opslaan</>}
+                            <Button size="sm" onClick={() => saveBreak(br)} disabled={busy} className="bg-[#6b0f1a]">
+                              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" />Opslaan</>}
                             </Button>
                           )}
-                          <Button size="sm" variant="ghost" onClick={() => deleteBreak(original.id)} disabled={busyId === original.id} className="text-red-500 hover:text-red-700">
+                          <Button size="sm" variant="ghost" onClick={() => deleteBreak(br)} disabled={busy} className="text-red-500 hover:text-red-700" title={isNew ? 'Annuleren' : 'Verwijderen'}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -859,4 +896,3 @@ function BarberBreaksManager() {
     </Card>
   );
 }
-

@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "server": "node server/server.cjs",
-    "start": "npm run build && NODE_ENV=production node server/server.cjs"
+    "start": "npm run build && NODE_ENV=production node server/server.cjs",
+    "test": "node server/slots.test.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

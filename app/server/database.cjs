@@ -243,10 +243,12 @@ db.serialize(() => {
     });
   });
 
-  // Create admin user only if it doesn't exist yet.
-  // Een bestaand wachtwoord wordt NIET overschreven, zodat wijzigingen via de admin behouden blijven.
+  // Maak alleen een admin aan als er nog GEEN enkele admin bestaat (nieuwe database).
+  // Een bestaand account wordt NIET overschreven, zodat een gewijzigde gebruikersnaam/wachtwoord behouden blijft.
+  // (Niet op de naam 'admin' controleren: na het wijzigen van de gebruikersnaam zou er anders
+  //  bij een herstart een tweede account 'admin' met het standaardwachtwoord bijkomen.)
   // Startwachtwoord voor een nieuwe database: ADMIN_PASSWORD (env), anders de oude standaard.
-  db.get('SELECT COUNT(*) as count FROM admin WHERE username = ?', ['admin'], (err, row) => {
+  db.get('SELECT COUNT(*) as count FROM admin', (err, row) => {
     if (err) {
       console.error('❌ Error checking admin:', err);
       return;

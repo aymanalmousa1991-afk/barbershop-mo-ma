@@ -75,16 +75,21 @@ function toErrorMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
 }
 
-// Tijdlijn in blokjes van 5 minuten (08:00 - 17:55)
+// Agenda in kwartieren (08:00 - 17:45), zoals Salonized
+const QUARTER = 15;
+const ROW_HEIGHT = 28; // px per kwartier
 const timeSlots = (() => {
   const slots: string[] = [];
   for (let h = 8; h < 18; h++) {
-    for (let m = 0; m < 60; m += 5) {
+    for (let m = 0; m < 60; m += QUARTER) {
       slots.push(String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'));
     }
   }
   return slots;
 })();
+
+// Geblokkeerde tijd van een behandeling: naar boven afgerond op een kwartier (gelijk aan de server)
+const blockMinutes = (duration: number) => Math.ceil((duration > 0 ? duration : 30) / QUARTER) * QUARTER;
 
 export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   const { logout, user } = useAuth();
@@ -210,8 +215,13 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   useEffect(() => {
     const interval = setInterval(() => { fetchData(true); }, 30000);
 
+    // 'focus' en 'visibilitychange' vuren vaak samen: ververs hoogstens eens per 10 seconden
+    let lastRefresh = 0;
     const onVisible = () => {
-      if (document.visibilityState === 'visible') { fetchData(true); fetchBreaks(); }
+      if (document.visibilityState !== 'visible' || Date.now() - lastRefresh < 10000) return;
+      lastRefresh = Date.now();
+      fetchData(true);
+      fetchBreaks();
     };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
@@ -282,6 +292,12 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
   const handleAddAppointment = async () => {
     if (!addBarber || !addTime || !newAppointment.name) return;
+    // Admin mag in een pauze boeken (klanten niet), maar dan bewust: eerst bevestigen
+    const toMinutes = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+    const start = toMinutes(addTime);
+    const end = start + blockMinutes(serviceMap[newAppointment.service]?.duration || 30);
+    const pause = breaksForDate.find(b => b.barber_name === addBarber && start < toMinutes(b.end_time) && end > toMinutes(b.start_time));
+    if (pause && !confirm(`Deze afspraak valt in de pauze van ${getBarberDisplayName(addBarber)} (${pause.start_time}–${pause.end_time}). Toch inplannen?`)) return;
     setIsAdding(true);
     try {
       const token = localStorage.getItem('token');
@@ -397,7 +413,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                                 <Button variant="outline" size="sm" onClick={() => setPasswordDialogOpen(true)} className="gap-2 border-[#6b0f1a] text-[#6b0f1a]">
-                  <KeyRound className="h-4 w-4" /><span className="hidden sm:inline">Wachtwoord</span>
+                  <KeyRound className="h-4 w-4" /><span className="hidden sm:inline">Account</span>
                 </Button>
                 <Button variant={activeView === 'agenda' ? 'default' : 'outline'} size="sm" onClick={() => setActiveView('agenda')}
                   className={activeView === 'agenda' ? 'bg-[#6b0f1a]' : 'border-[#6b0f1a] text-[#6b0f1a]'}>
@@ -516,42 +532,68 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                         const [th, tm] = time.split(':').map(Number);
                         const slotMin = th * 60 + tm;
                         const isHour = tm === 0;
-                        const isHalf = tm === 30;
                         const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
                         const fmt = (min: number) => String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0');
+                        // Rij (kwartier) waarin een afspraak begint en hoeveel rijen hij beslaat
+                        const rowOf = (a: Appointment) => Math.floor(toMin(a.time) / QUARTER) * QUARTER;
+                        const rowsOf = (a: Appointment) => {
+                          const start = toMin(a.time);
+                          const end = start + blockMinutes(serviceMap[a.service]?.duration || 30);
+                          return Math.max(1, Math.ceil((end - rowOf(a)) / QUARTER));
+                        };
                         return (
-                          <tr key={time} className={(isHour ? 'border-t border-stone-300' : '')}>
-                            <td className={'sticky left-0 z-10 px-2 text-xs border-b bg-white ' + (isHour ? 'font-bold text-stone-700' : 'text-stone-400')}
-                                style={{ height: isHour ? 22 : 16 }}>
-                              {isHour || isHalf ? time : ''}
+                          <tr key={time}>
+                            <td className={'sticky left-0 z-10 px-2 text-xs bg-white whitespace-nowrap ' + (isHour ? 'border-t border-stone-300 font-bold text-stone-700' : 'border-t border-stone-100 text-stone-400')}
+                                style={{ height: ROW_HEIGHT }}>
+                              {time}
                             </td>
                             {filteredBarbers.map(({ key, color }: any) => {
                               const apts = appointmentsByBarber(key);
-                              // Afspraak die op dit tijdstip START
-                              const apt = apts.find(a => a.time === time);
-                              // Is deze 5-min cel een vervolg (binnen de duur) van een afspraak?
-                              const continuation = !apt && apts.some(a => {
-                                const dur = serviceMap[a.service]?.duration || 30;
-                                const s = toMin(a.time);
-                                return slotMin > s && slotMin < s + dur;
-                              });
+                              // Afspraak die in dit kwartier BEGINT
+                              const apt = apts.find(a => rowOf(a) === slotMin);
+                              // Valt dit kwartier binnen een eerder begonnen afspraak? (de rowSpan dekt het al)
+                              const continuation = !apt && apts.some(a => slotMin > rowOf(a) && slotMin < rowOf(a) + rowsOf(a) * QUARTER);
                               if (apt) {
                                 const dur = serviceMap[apt.service]?.duration || 30;
                                 const endMin = toMin(apt.time) + dur;
-                                const spanRows = Math.max(1, Math.round(dur / 5));
+                                const spanRows = rowsOf(apt);
+                                const single = spanRows === 1;
+                                // Gekleurd blok = echte duur; de rest van het geblokkeerde kwartier blijft wit,
+                                // zodat de kapper ziet hoeveel minuten hij vrij heeft (bijv. 10:10–10:15)
+                                const offsetPx = ((toMin(apt.time) - rowOf(apt)) / QUARTER) * ROW_HEIGHT;
+                                const blockPx = Math.max(14, (dur / QUARTER) * ROW_HEIGHT - 2);
                                 return (
-                                  <td key={key} rowSpan={spanRows}
-                                      className={'align-top px-1 pt-0.5 border-l-4 ' + color.light + ' ' + color.border}>
-                                    <div className="group relative h-full">
+                                  <td key={key} rowSpan={spanRows} className="align-top p-0 border-t border-stone-100 bg-white">
+                                    {/* Vaste hoogte: inhoud mag de kwartierrijen niet oprekken */}
+                                    <div className="relative" style={{ height: spanRows * ROW_HEIGHT - 1 }}>
+                                    <div
+                                      className={'group absolute left-0.5 right-0.5 overflow-hidden rounded-sm border-l-4 px-1 flex flex-col ' + (single ? 'justify-center' : 'py-0.5') + ' ' + color.light + ' ' + color.border}
+                                      style={{ top: offsetPx + 1, height: blockPx }}
+                                    >
+                                      {single ? (
+                                        <p
+                                          className={'text-[11px] leading-tight truncate flex items-center gap-1 ' + color.text + (apt.notes ? ' cursor-pointer' : '')}
+                                          title={apt.notes || undefined}
+                                          onClick={apt.notes ? () => toast(`Opmerking van ${apt.name}`, { description: apt.notes }) : undefined}
+                                        >
+                                          {apt.notes && <MessageSquare className="h-3 w-3 flex-shrink-0 text-amber-600" />}
+                                          <span className="font-semibold text-stone-600">{apt.time}</span>
+                                          <span className="font-bold truncate">{apt.name}</span>
+                                          <span className="text-stone-500 whitespace-nowrap">{dur} min</span>
+                                          <span className="text-stone-400 truncate">{serviceMap[apt.service]?.name || apt.service}</span>
+                                        </p>
+                                      ) : (<>
+                                      <p className="text-[10px] font-semibold text-stone-600 leading-tight">
+                                        {apt.time}&nbsp;&ndash;&nbsp;{fmt(endMin)}
+                                        <span className="font-normal text-stone-500"> &middot; {dur} min</span>
+                                      </p>
                                       <p className={'text-[11px] font-bold leading-tight truncate flex items-center gap-1 ' + color.text}>
                                         {apt.notes && <MessageSquare className="h-3 w-3 flex-shrink-0 text-amber-600" />}
                                         <span className="truncate">{apt.name}</span>
                                       </p>
-                                      <p className="text-[10px] font-semibold text-stone-600 leading-tight">
-                                        {apt.time}&nbsp;&ndash;&nbsp;{fmt(endMin)}
-                                      </p>
                                       <p className="text-[10px] text-stone-400 leading-tight truncate">{serviceMap[apt.service]?.name || apt.service}</p>
-                                      {apt.notes && (
+                                      </>)}
+                                      {apt.notes && !single && (
                                         // Opmerking van de klant: ingekort in de cel, volledig bij hover of klik
                                         <button
                                           type="button"
@@ -567,6 +609,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                                         <button onClick={()=>{setAppointmentToDelete(apt);setDeleteDialogOpen(true);}} className="text-red-500 hover:text-red-700 p-0.5"><Trash2 className="h-3 w-3"/></button>
                                       </div>
                                     </div>
+                                    </div>
                                   </td>
                                 );
                               }
@@ -574,18 +617,20 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                               if (continuation) return null;
                               const pause = breakAt(key, slotMin);
                               if (pause) {
+                                // Label in het kwartier waarin de pauze begint
+                                const pauseStartsHere = Math.floor(toMin(pause.start_time) / QUARTER) * QUARTER === slotMin;
                                 return (
-                                  <td key={key} className="px-1 border-b border-stone-200 bg-stone-200/70" title={'Pauze ' + pause.start_time + ' - ' + pause.end_time}>
-                                    <button onClick={()=>{setAddBarber(key);setAddTime(time);setAddDialogOpen(true);}} className="w-full text-left" style={{ height: isHour ? 22 : 16 }}>
-                                      {pause.start_time === time && <span className="text-[10px] font-semibold text-stone-500 leading-none">Pauze {pause.start_time}&ndash;{pause.end_time}</span>}
+                                  <td key={key} className={'px-1 bg-stone-200/70 ' + (isHour ? 'border-t border-stone-300' : 'border-t border-stone-200')} title={'Pauze ' + pause.start_time + ' - ' + pause.end_time}>
+                                    <button onClick={()=>{setAddBarber(key);setAddTime(time);setAddDialogOpen(true);}} className="w-full text-left overflow-hidden" style={{ height: ROW_HEIGHT - 2 }}>
+                                      {pauseStartsHere && <span className="text-[10px] font-semibold text-stone-500 leading-none">Pauze {pause.start_time}&ndash;{pause.end_time}</span>}
                                     </button>
                                   </td>
                                 );
                               }
                               return (
-                                <td key={key} className={'px-1 border-b border-stone-100 ' + (isHour ? 'border-t border-stone-300' : '')}>
-                                  <button onClick={()=>{setAddBarber(key);setAddTime(time);setAddDialogOpen(true);}} className="w-full flex items-center justify-center group" style={{ height: isHour ? 22 : 16 }}>
-                                    <span className="text-stone-200 group-hover:text-stone-400 opacity-0 group-hover:opacity-100 text-xs leading-none">+</span>
+                                <td key={key} className={'px-1 ' + (isHour ? 'border-t border-stone-300' : 'border-t border-stone-100')}>
+                                  <button onClick={()=>{setAddBarber(key);setAddTime(time);setAddDialogOpen(true);}} className="w-full flex items-center justify-center group hover:bg-stone-50" style={{ height: ROW_HEIGHT - 2 }}>
+                                    <span className="text-stone-300 opacity-0 group-hover:opacity-100 text-xs leading-none">+ {time}</span>
                                   </button>
                                 </td>
                               );

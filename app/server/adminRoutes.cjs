@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const multer = require('multer');
 const path = require('path');
+const { blockMinutes } = require('./slots.cjs');
 const router = express.Router();
 
 // Map voor galerijfoto's; moet gelijk zijn aan UPLOADS_DIR/photos in server.cjs (geserveerd op /uploads/photos)
@@ -67,6 +68,39 @@ module.exports = function(db, authenticateToken, servicesMap, invalidateServices
     } catch (err) {
       res.status(500).json({ success: false, error: 'Interne server fout' });
     }
+  });
+
+  // Gebruikersnaam wijzigen (ter bevestiging is het huidige wachtwoord nodig)
+  router.post('/auth/change-username', authenticateToken, (req, res) => {
+    const { currentPassword } = req.body;
+    const newUsername = String(req.body.newUsername || '').trim();
+    if (!currentPassword || !newUsername) {
+      return res.status(400).json({ success: false, error: 'Nieuwe gebruikersnaam en huidig wachtwoord zijn verplicht' });
+    }
+    if (newUsername.length < 3 || newUsername.length > 30) {
+      return res.status(400).json({ success: false, error: 'De gebruikersnaam moet 3 tot 30 tekens lang zijn' });
+    }
+    if (!/^[A-Za-z0-9._@-]+$/.test(newUsername)) {
+      return res.status(400).json({ success: false, error: 'Gebruik alleen letters, cijfers en . _ - @ (geen spaties)' });
+    }
+
+    db.get('SELECT * FROM admin WHERE id = ?', [req.user.id], (err, user) => {
+      if (err || !user) return res.status(404).json({ success: false, error: 'Gebruiker niet gevonden' });
+      if (!bcrypt.compareSync(currentPassword, user.passwordHash)) {
+        return res.status(401).json({ success: false, error: 'Huidig wachtwoord is onjuist' });
+      }
+      if (newUsername === user.username) {
+        return res.status(400).json({ success: false, error: 'Dit is al je huidige gebruikersnaam' });
+      }
+      db.get('SELECT id FROM admin WHERE username = ? COLLATE NOCASE AND id != ?', [newUsername, user.id], (err2, taken) => {
+        if (err2) return res.status(500).json({ success: false, error: 'Database fout' });
+        if (taken) return res.status(409).json({ success: false, error: 'Deze gebruikersnaam is al in gebruik' });
+        db.run('UPDATE admin SET username = ? WHERE id = ?', [newUsername, user.id], (err3) => {
+          if (err3) return res.status(500).json({ success: false, error: 'Gebruikersnaam wijzigen mislukt' });
+          res.json({ success: true, message: 'Gebruikersnaam gewijzigd', data: { username: newUsername } });
+        });
+      });
+    });
   });
 
   router.post('/auth/forgot-password', (req, res) => {
@@ -294,14 +328,14 @@ module.exports = function(db, authenticateToken, servicesMap, invalidateServices
     // maar niet overlappen met een bestaande afspraak van dezelfde kapper.
     const toMin = (t) => { const p = t.split(':'); return parseInt(p[0]) * 60 + parseInt(p[1]); };
     const newStart = toMin(time);
-    const newEnd = newStart + getDurationByKey(service, 30);
+    const newEnd = newStart + blockMinutes(getDurationByKey(service, 30));
 
     db.all('SELECT time, treatment FROM appointments WHERE date=? AND barber_name=? AND status="active"',
       [date, barber_name], (err, rows) => {
         if (err) return res.status(500).json({ success: false, error: 'Database fout' });
         const clash = (rows || []).find(r => {
           const s = toMin(r.time);
-          return newStart < s + getDurationByKey(r.treatment || '', 30) && newEnd > s;
+          return newStart < s + blockMinutes(getDurationByKey(r.treatment || '', 30)) && newEnd > s;
         });
         if (clash) return res.status(409).json({ success: false, error: 'Dit tijdstip overlapt met een bestaande afspraak om ' + clash.time });
 
